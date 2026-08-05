@@ -1,0 +1,35 @@
+# ===== 跨境电商 AI Agent 依赖 =====
+# 核心 LLM 编排
+langchain==0.2.16
+langchain-core==0.2.41
+langchain-community==0.2.17
+langchain-openai==0.1.23
+langchain-huggingface==0.0.3
+langchain-experimental==0.0.64
+
+# 向量库
+chromadb==0.5.5
+
+# Embedding 模型
+sentence-transformers==3.0.1
+
+# LLM 接口（OpenAI 兼容）
+openai==1.40.0
+
+# Web 服务
+fastapi==0.115.0
+uvicorn==0.30.6
+
+# 数据库
+mysql-connector-python==8.4.0
+sqlalchemy==2.0.32
+
+# 文档解析
+pypdf==4.3.1
+unstructured==0.15.7
+
+# 工具
+pydantic==2.8.2
+python-dotenv==1.0.1
+numpy==1.26.4
+jieba==0.42.1

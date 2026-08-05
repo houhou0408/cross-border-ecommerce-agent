@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>跨境电商 AI Agent</title>
+<style>
+  :root{
+    --bg:#0b1020; --bg2:#121a2e;
+    --panel:rgba(255,255,255,.04); --panel-solid:#172033;
+    --card:rgba(255,255,255,.045); --card-hover:rgba(255,255,255,.07);
+    --border:rgba(255,255,255,.09); --border-strong:rgba(255,255,255,.16);
+    --text:#eaf0ff; --muted:#8794b2; --faint:#5b6584;
+    --primary:#6ea8fe; --primary-2:#7c5cff; --primary-grad:linear-gradient(135deg,#6ea8fe,#7c5cff);
+    --green:#34d399; --red:#fb7185; --amber:#fbbf24; --cyan:#22d3ee;
+    --shadow:0 10px 30px -10px rgba(0,0,0,.5);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+    color:var(--text);
+    background:
+      radial-gradient(1200px 600px at 12% -10%, rgba(124,92,255,.18), transparent 55%),
+      radial-gradient(1000px 500px at 100% 0%, rgba(110,168,254,.16), transparent 50%),
+      var(--bg);
+    overflow:hidden;
+  }
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:6px;border:2px solid transparent;background-clip:padding-box}
+  ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.18);background-clip:padding-box}
+
+  /* 顶栏 */
+  header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 22px;border-bottom:1px solid var(--border);
+    backdrop-filter:blur(12px);background:rgba(11,16,32,.6);
+    position:relative;z-index:10;
+  }
+  .brand{display:flex;align-items:center;gap:12px}
+  .logo{
+    width:36px;height:36px;border-radius:10px;background:var(--primary-grad);
+    display:flex;align-items:center;justify-content:center;font-size:18px;
+    box-shadow:0 6px 16px -4px rgba(124,92,255,.6);
+  }
+  .brand h1{font-size:16px;font-weight:600;letter-spacing:.3px}
+  .brand h1 span{background:var(--primary-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .brand .sub{font-size:11px;color:var(--faint);margin-top:2px}
+  .status{display:flex;gap:18px;font-size:12px;color:var(--muted);align-items:center}
+  .status .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(52,211,153,.2);margin-right:6px;display:inline-block;vertical-align:middle}
+  .badge{padding:3px 9px;border-radius:20px;background:var(--panel);border:1px solid var(--border);font-size:11px;color:var(--muted)}
+
+  /* 主布局 */
+  .layout{display:grid;grid-template-columns:1fr 360px;gap:16px;padding:16px;height:calc(100vh - 65px)}
+
+  /* 聊天区 */
+  .chat{display:flex;flex-direction:column;min-height:0;border-radius:16px;border:1px solid var(--border);background:var(--panel);overflow:hidden}
+  .messages{flex:1;overflow-y:auto;padding:24px 26px}
+  .msg{margin-bottom:18px;max-width:88%;display:flex;flex-direction:column}
+  .msg.user{margin-left:auto;align-items:flex-end}
+  .msg.bot{align-items:flex-start}
+  .avatar{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;margin-bottom:6px}
+  .msg.bot .avatar{background:var(--primary-grad);box-shadow:0 4px 10px -3px rgba(124,92,255,.5)}
+  .msg.user .avatar{background:rgba(255,255,255,.08);border:1px solid var(--border)}
+  .bubble{
+    padding:12px 16px;border-radius:14px;font-size:14px;line-height:1.7;white-space:pre-wrap;word-break:break-word;
+    box-shadow:var(--shadow);
+  }
+  .msg.user .bubble{background:var(--primary-grad);color:#fff;border-bottom-right-radius:4px}
+  .msg.bot .bubble{background:var(--card);border:1px solid var(--border);border-bottom-left-radius:4px}
+  .msg.bot .bubble strong{color:#fff}
+  /* markdown 表格渲染 */
+  .bubble table{border-collapse:collapse;margin:8px 0;width:100%;font-size:13px}
+  .bubble th,.bubble td{border:1px solid var(--border-strong);padding:5px 9px;text-align:left}
+  .bubble th{background:rgba(255,255,255,.06)}
+  .bubble h1,.bubble h2,.bubble h3{margin:10px 0 6px;font-size:15px}
+  .bubble ul,.bubble ol{margin:6px 0;padding-left:20px}
+  .bubble code{background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;font-size:12px}
+
+  /* 元信息标签 */
+  .meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;font-size:11px}
+  .tag{padding:2px 9px;border-radius:12px;background:var(--panel);border:1px solid var(--border);color:var(--muted)}
+  .tag.ok{color:var(--green);border-color:rgba(52,211,153,.35);background:rgba(52,211,153,.08)}
+  .tag.warn{color:var(--amber);border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.08)}
+  .tag.tool{color:var(--cyan);border-color:rgba(34,211,238,.35);background:rgba(34,211,238,.08)}
+  .tag.time{color:var(--faint)}
+
+  .thinking{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px;padding:10px 0}
+  .spinner{width:14px;height:14px;border:2px solid rgba(255,255,255,.15);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* 示例 & 输入 */
+  .examples{display:flex;gap:7px;flex-wrap:wrap;padding:0 20px 10px}
+  .examples button{
+    background:var(--card);border:1px solid var(--border);color:var(--muted);
+    font-size:12px;padding:5px 11px;border-radius:18px;cursor:pointer;transition:all .15s;
+  }
+  .examples button:hover{color:var(--text);border-color:var(--primary);background:var(--card-hover);transform:translateY(-1px)}
+  .input-bar{padding:14px 18px 16px;border-top:1px solid var(--border);background:var(--panel);display:flex;gap:10px;align-items:flex-end}
+  .input-bar textarea{
+    flex:1;background:var(--card);border:1px solid var(--border);border-radius:12px;color:var(--text);
+    padding:11px 14px;font-size:14px;resize:none;height:46px;max-height:120px;font-family:inherit;transition:border-color .15s;
+  }
+  .input-bar textarea:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(110,168,254,.12)}
+  .send-btn{
+    background:var(--primary-grad);color:#fff;border:none;border-radius:12px;padding:0 20px;height:46px;
+    font-size:14px;font-weight:500;cursor:pointer;transition:all .15s;box-shadow:0 6px 16px -6px rgba(124,92,255,.6);
+  }
+  .send-btn:hover{transform:translateY(-1px);box-shadow:0 8px 20px -6px rgba(124,92,255,.7)}
+  .send-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+
+  /* 侧边栏 */
+  .sidebar{overflow-y:auto;display:flex;flex-direction:column;gap:14px}
+  .panel{
+    background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:16px;
+    box-shadow:var(--shadow);
+  }
+  .panel h3{font-size:13px;margin-bottom:14px;display:flex;align-items:center;gap:8px;color:var(--text)}
+  .panel h3 .ico{width:24px;height:24px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;background:var(--primary-grad)}
+  .field{margin-bottom:11px}
+  .field label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;letter-spacing:.3px}
+  .field input,.field select{width:100%;background:var(--card);border:1px solid var(--border);border-radius:9px;color:var(--text);padding:9px 11px;font-size:13px;font-family:inherit;transition:border-color .15s}
+  .field input:focus,.field select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(110,168,254,.12)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .panel-btn{
+    width:100%;background:var(--card);border:1px solid var(--border);color:var(--text);
+    border-radius:10px;padding:9px;font-size:13px;cursor:pointer;transition:all .15s;margin-top:5px;font-family:inherit;
+  }
+  .panel-btn:hover{background:var(--card-hover);border-color:var(--primary)}
+  .panel-btn.primary{background:var(--primary-grad);border:none;color:#fff;box-shadow:0 6px 16px -6px rgba(124,92,255,.55)}
+  .panel-btn.primary:hover{transform:translateY(-1px)}
+  .panel-btn:disabled{opacity:.5;cursor:not-allowed}
+
+  /* 统计 */
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .stat{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:12px;text-align:center}
+  .stat .v{font-size:20px;font-weight:600;letter-spacing:.3px}
+  .stat .l{font-size:10px;color:var(--muted);margin-top:3px}
+  .stat .v.ok{color:var(--green)} .stat .v.warn{color:var(--amber)} .stat .v.info{color:var(--primary)} .stat .v.purple{color:var(--primary-2)}
+
+  /* 工具调用时间线（在消息中展示） */
+  .toolline{margin-top:8px;display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+  .toolline .step{font-size:10px;color:var(--cyan);background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.25);padding:2px 8px;border-radius:10px}
+  .toolline .arrow{color:var(--faint);font-size:10px}
+
+  /* 响应式 */
+  @media (max-width:980px){
+    .layout{grid-template-columns:1fr;height:auto;overflow:auto}
+    .sidebar{max-height:none}
+    body{overflow:auto}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="logo">🛒</div>
+    <div>
+      <h1>跨境电商 <span>AI Agent</span></h1>
+      <div class="sub">ReAct · RAG · Function Call · 幻觉治理</div>
+    </div>
+  </div>
+  <div class="status">
+    <span id="health"><span class="dot"></span>连接中</span>
+    <span class="badge">DeepSeek V4-Flash</span>
+    <span class="badge">Chroma + BGE</span>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- 左：聊天区 -->
+  <div class="chat">
+    <div class="messages" id="messages">
+      <div class="msg bot">
+        <div class="avatar">🤖</div>
+        <div class="bubble">你好！我是跨境电商运营智能体。可以问我平台政策、关税汇率、生成 Listing，或直接给复合任务，例如「蓝牙音箱出口美国电子产品，货值500美元，查关税并换算成人民币」。</div>
+      </div>
+    </div>
+    <div class="examples">
+      <button onclick="fillExample(0)">🔍 美国电子产品关税+换算人民币</button>
+      <button onclick="fillExample(1)">📋 Shopee上架规范</button>
+      <button onclick="fillExample(2)">💡 新手选品建议</button>
+      <button onclick="fillExample(3)">🇪🇺 欧盟电子产品认证</button>
+    </div>
+    <div class="input-bar">
+      <textarea id="input" placeholder="输入任务，Enter 发送 · Shift+Enter 换行" onkeydown="onKey(event)"></textarea>
+      <button class="send-btn" id="sendBtn" onclick="send()">发送</button>
+    </div>
+  </div>
+
+  <!-- 右：工具面板 -->
+  <div class="sidebar">
+    <!-- Listing 生成 -->
+    <div class="panel">
+      <h3><span class="ico">📝</span> Listing 生成</h3>
+      <div class="field"><label>产品名称</label><input id="ls-product" placeholder="如 蓝牙音箱"></div>
+      <div class="row">
+        <div class="field"><label>平台</label>
+          <select id="ls-platform"><option value="amazon">Amazon</option><option value="shopee">Shopee</option><option value="temu">Temu</option></select>
+        </div>
+        <div class="field"><label>语言</label>
+          <select id="ls-lang"><option value="zh">中文</option><option value="en">English</option></select>
+        </div>
+      </div>
+      <div class="field"><label>产品卖点（可选）</label><input id="ls-features" placeholder="如 IPX7防水, 续航20小时"></div>
+      <button class="panel-btn primary" onclick="genListing(this)">生成 Listing</button>
+    </div>
+
+    <!-- 关税查询 -->
+    <div class="panel">
+      <h3><span class="ico">🛃</span> 关税查询</h3>
+      <div class="row">
+        <div class="field"><label>目的国</label><input id="tf-country" value="美国"></div>
+        <div class="field"><label>商品类别</label><input id="tf-category" value="电子产品"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>货值</label><input id="tf-value" type="number" value="500"></div>
+        <div class="field"><label>运费</label><input id="tf-freight" type="number" value="0"></div>
+      </div>
+      <button class="panel-btn primary" onclick="queryTariff(this)">查询关税</button>
+    </div>
+
+    <!-- 汇率换算 -->
+    <div class="panel">
+      <h3><span class="ico">💱</span> 汇率换算</h3>
+      <div class="row">
+        <div class="field"><label>金额</label><input id="fx-amount" type="number" value="500"></div>
+        <div class="field"><label>源币种</label><input id="fx-from" value="USD"></div>
+      </div>
+      <div class="field"><label>目标币种</label><input id="fx-to" value="CNY"></div>
+      <button class="panel-btn primary" onclick="convertCurrency(this)">换算</button>
+    </div>
+
+    <!-- 运行统计 -->
+    <div class="panel">
+      <h3><span class="ico">📊</span> 运行统计</h3>
+      <div class="stat-grid">
+        <div class="stat"><div class="v info" id="s-total">0</div><div class="l">调用次数</div></div>
+        <div class="stat"><div class="v purple" id="s-latency">0</div><div class="l">平均耗时(ms)</div></div>
+        <div class="stat"><div class="v ok" id="s-score">0</div><div class="l">平均置信度</div></div>
+        <div class="stat"><div class="v warn" id="s-hallu">0%</div><div class="l">幻觉拦截率</div></div>
+      </div>
+      <button class="panel-btn" onclick="loadStats()" style="margin-top:11px">刷新统计</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+const examples = [
+  '蓝牙音箱出口美国电子产品，货值500美元，查关税并换算成人民币',
+  'Shopee上架有什么规范要求？',
+  '新手卖家做跨境电商，选品有什么建议？',
+  '欧盟电子产品需要哪些认证？'
+];
+
+function fillExample(i){ document.getElementById('input').value = examples[i]; document.getElementById('input').focus(); }
+
+async function checkHealth(){
+  try{
+    const r = await fetch(API+'/health');
+    const d = await r.json();
+    document.getElementById('health').innerHTML = '<span class="dot"></span>'+(d.service||'服务正常');
+  }catch(e){
+    document.getElementById('health').innerHTML = '<span class="dot" style="background:var(--red);box-shadow:0 0 0 3px rgba(251,113,133,.2)"></span>未连接';
+  }
+}
+
+// 简易 markdown 渲染（表格/标题/列表/加粗/代码）
+function renderMd(text){
+  // 转义
+  let s = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // 表格
+  s = s.replace(/^\|(.+)\|\n\|([-:\s|]+)\|\n((?:\|.+\|\n?)+)/gm, (m,head,sep,body)=>{
+    const cols = head.split('|').map(c=>c.trim());
+    let rows = body.trim().split('\n').map(r=>r.replace(/^\||\|$/g,'').split('|').map(c=>c.trim()));
+    let html = '<table><thead><tr>'+cols.map(c=>'<th>'+c+'</th>').join('')+'</tr></thead><tbody>';
+    rows.forEach(r=>{ html += '<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>'; });
+    return html+'</tbody></table>';
+  });
+  s = s.replace(/^### (.+)$/gm,'<h3>$1</h3>');
+  s = s.replace(/^## (.+)$/gm,'<h2>$1</h2>');
+  s = s.replace(/^# (.+)$/gm,'<h1>$1</h1>');
+  s = s.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  s = s.replace(/`([^`]+)`/g,'<code>$1</code>');
+  s = s.replace(/^[-•] (.+)$/gm,'<li>$1</li>');
+  s = s.replace(/(<li>[\s\S]+?<\/li>)/g,'<ul>$1</ul>').replace(/<\/ul>\s*<ul>/g,'');
+  s = s.replace(/\n{2,}/g,'<br>');
+  return s;
+}
+
+function addMsg(role, text, useMd){
+  const box = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg '+role;
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar';
+  avatar.textContent = role==='user' ? '🧑' : '🤖';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  if(useMd && role==='bot'){ bubble.innerHTML = renderMd(text); }
+  else { bubble.textContent = text; }
+  div.appendChild(avatar);
+  div.appendChild(bubble);
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+  return div;
+}
+
+function addThinking(){
+  const box = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg bot';
+  div.id = 'thinking-msg';
+  div.innerHTML = '<div class="avatar">🤖</div><div class="bubble" style="display:flex;align-items:center;gap:9px"><span class="spinner"></span>Agent 正在思考并调用工具…</div>';
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+function removeThinking(){ const t = document.getElementById('thinking-msg'); if(t) t.remove(); }
+
+function addMeta(msgDiv, data){
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  const tags = [];
+  tags.push(`<span class="tag time">⏱ ${data.latency_ms||0}ms</span>`);
+  if(data.session_id) tags.push(`<span class="tag">#${data.session_id}</span>`);
+  if(data.tools_used && data.tools_used.length){
+    // 工具链时间线
+    const steps = data.tools_used.map(t=>`<span class="step">🔧 ${t.tool}</span>`).join('<span class="arrow">→</span>');
+    tags.push(`<span class="tag tool">工具 ${data.tools_used.length} 次</span>`);
+    const tl = document.createElement('div');
+    tl.className = 'toolline';
+    tl.innerHTML = steps;
+    msgDiv.querySelector('.bubble').after(tl);
+  }
+  if(data.grounded){
+    tags.push(`<span class="tag ok">✓ 置信度 ${(data.score||0).toFixed(2)}</span>`);
+  }else{
+    tags.push(`<span class="tag warn">⚠ 置信度 ${(data.score||0).toFixed(2)} · 幻觉风险</span>`);
+  }
+  meta.innerHTML = tags.join('');
+  msgDiv.appendChild(meta);
+}
+
+function onKey(e){ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); } }
+
+async function send(){
+  const input = document.getElementById('input');
+  const text = input.value.trim();
+  if(!text) return;
+  addMsg('user', text);
+  input.value = '';
+  const btn = document.getElementById('sendBtn');
+  btn.disabled = true;
+  addThinking();
+  try{
+    const r = await fetch(API+'/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:text})});
+    const d = await r.json();
+    removeThinking();
+    const msgDiv = addMsg('bot', d.answer || d.error || '(空)', true);
+    addMeta(msgDiv, d);
+    loadStats();
+  }catch(e){
+    removeThinking();
+    addMsg('bot', '❌ 请求失败：'+e.message);
+  }finally{ btn.disabled = false; }
+}
+
+async function genListing(btn){
+  const body = {
+    product: document.getElementById('ls-product').value.trim(),
+    platform: document.getElementById('ls-platform').value,
+    language: document.getElementById('ls-lang').value,
+    features: document.getElementById('ls-features').value.trim()
+  };
+  if(!body.product){ alert('请输入产品名称'); return; }
+  btn.disabled = true; btn.textContent = '生成中…';
+  try{
+    const r = await fetch(API+'/listing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d = await r.json();
+    addMsg('user', `📝 [Listing生成] ${body.product} / ${body.platform} / ${body.language}`);
+    addMsg('bot', d.listing || d.error, true);
+  }catch(e){ addMsg('bot','❌ '+e.message); }
+  finally{ btn.disabled=false; btn.textContent='生成 Listing'; }
+}
+
+async function queryTariff(btn){
+  const body = {
+    country: document.getElementById('tf-country').value.trim(),
+    category: document.getElementById('tf-category').value.trim(),
+    value: parseFloat(document.getElementById('tf-value').value)||0,
+    freight: parseFloat(document.getElementById('tf-freight').value)||0,
+    insurance: 0
+  };
+  if(!body.country||!body.category){ alert('请填写目的国与类别'); return; }
+  btn.disabled = true; btn.textContent = '查询中…';
+  try{
+    const r = await fetch(API+'/tariff',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d = await r.json();
+    addMsg('user', `🛃 [关税查询] ${body.country} · ${body.category} · 货值${body.value}`);
+    addMsg('bot', d.result || d.error, true);
+  }catch(e){ addMsg('bot','❌ '+e.message); }
+  finally{ btn.disabled=false; btn.textContent='查询关税'; }
+}
+
+async function convertCurrency(btn){
+  const body = {
+    amount: parseFloat(document.getElementById('fx-amount').value)||0,
+    from_currency: document.getElementById('fx-from').value.trim().toUpperCase(),
+    to_currency: document.getElementById('fx-to').value.trim().toUpperCase()
+  };
+  btn.disabled = true; btn.textContent = '换算中…';
+  try{
+    const r = await fetch(API+'/currency',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d = await r.json();
+    addMsg('user', `💱 [汇率换算] ${body.amount} ${body.from_currency} → ${body.to_currency}`);
+    addMsg('bot', d.result || d.error, true);
+  }catch(e){ addMsg('bot','❌ '+e.message); }
+  finally{ btn.disabled=false; btn.textContent='换算'; }
+}
+
+async function loadStats(){
+  try{
+    const r = await fetch(API+'/stats');
+    const d = await r.json();
+    if(!d.total_calls){ d.total_calls=0; }
+    document.getElementById('s-total').textContent = d.total_calls||0;
+    document.getElementById('s-latency').textContent = d.avg_latency_ms?Math.round(d.avg_latency_ms):0;
+    document.getElementById('s-score').textContent = d.avg_grounding_score?d.avg_grounding_score.toFixed(2):'0.00';
+    document.getElementById('s-hallu').textContent = ((d.hallucination_block_rate||0)*100).toFixed(0)+'%';
+  }catch(e){}
+}
+
+checkHealth();
+loadStats();
+setInterval(loadStats, 15000);
+</script>
+</body>
+</html>
