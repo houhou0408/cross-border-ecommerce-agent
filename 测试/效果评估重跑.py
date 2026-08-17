@@ -13,8 +13,9 @@ rep = get_evaluator().run_all()
 print("=== 汇总 ===")
 summary_keys = [
     "total", "tool_success_rate", "answer_accuracy_rate",
-    "hallucination_rate", "avg_latency_ms", "quality",
-    "tool_pass_count", "answer_pass_count", "hallucination_count",
+    "hallucination_rate", "hallucination_count", "honest_low_confidence",
+    "avg_latency_ms", "quality",
+    "tool_pass_count", "answer_pass_count",
 ]
 print(json.dumps({k: rep[k] for k in summary_keys}, ensure_ascii=False, indent=1))
 
@@ -27,6 +28,6 @@ for d in rep["details"]:
         f"{d['test_id']} [{d['level']}] {d['category']} | "
         f"tool={d['tool_pass']} | {d['quality']} | "
         f"kw={d['keyword_hits']}/{d['keyword_total']} | "
-        f"grounded={d['grounded']} | {d['latency_ms']}ms | "
-        f"tools={d['tools_used']} | err={d['error']}"
+        f"grounded={d['grounded']} honest={d['honest_degrade']} | "
+        f"{d['latency_ms']}ms | tools={d['tools_used']} | err={d['error']}"
     )

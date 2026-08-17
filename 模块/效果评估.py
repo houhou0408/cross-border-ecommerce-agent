@@ -190,6 +190,7 @@ class 单条结果:
     answer_pass: bool = False            # 关键词命中率达标
     quality: str = "wrong"               # 答案质量三档：correct / partial / wrong
     grounded: bool = True
+    honest_degrade: bool = False         # 低置信但已诚实标注未核实（非编造幻觉）
     latency_ms: int = 0
     answer_preview: str = ""
     error: str = ""
@@ -221,6 +222,11 @@ class 评估器:
             r.latency_ms = res.get("latency_ms", 0)
             answer = res.get("answer", "")
             r.answer_preview = answer[:200]
+            # 诚实降级识别：grounded=False 时若答案明确标注未核实/不存在等，
+            # 属于"低置信但未编造"，不算真幻觉（编造且未标注不确定）
+            _HONEST_HINTS = ("未核实", "未命中", "未检索", "以官方为准",
+                             "行业通用", "不存在", "无法提供", "暂未收录")
+            r.honest_degrade = any(h in answer for h in _HONEST_HINTS)
 
             # 工具调用成功率：期望工具非空时，至少命中一个
             if r.expected_tools:
@@ -268,7 +274,10 @@ class 评估器:
         total = len(results)
         tool_pass_count = sum(1 for r in results if r.tool_pass)
         answer_pass_count = sum(1 for r in results if r.answer_pass)
-        hallucination_count = sum(1 for r in results if not r.grounded)
+        # 幻觉率口径：仅统计"编造且未标注不确定"的真幻觉；
+        # 低置信但已诚实标注未核实的降级回答单列，不算幻觉
+        hallucination_count = sum(1 for r in results if not r.grounded and not r.honest_degrade)
+        honest_low_confidence = sum(1 for r in results if not r.grounded and r.honest_degrade)
         avg_latency = sum(r.latency_ms for r in results) / total if total else 0
 
         # 答案质量三档统计
@@ -276,14 +285,15 @@ class 评估器:
         partial_count = sum(1 for r in results if r.quality == "partial")
         wrong_count = sum(1 for r in results if r.quality == "wrong")
 
-        # 人工抽检清单：部分正确 / 错误 / 幻觉条目，建议人工复核后才可信
+        # 人工抽检清单：真幻觉 / 诚实降级 / 部分正确条目，建议人工复核后才可信
         manual_review = [
             {
                 "test_id": r.test_id,
                 "reason": (
-                    "答案幻觉(grounded=False)" if not r.grounded
-                    else ("答案部分正确(partial)" if r.quality == "partial"
-                          else "答案错误(wrong)")
+                    "真幻觉(编造且未标注不确定)" if not r.grounded and not r.honest_degrade
+                    else ("诚实降级(已标注未核实，非编造)" if not r.grounded
+                          else ("答案部分正确(partial)" if r.quality == "partial"
+                                else "答案错误(wrong)"))
                 ),
                 "keyword_hits": f"{r.keyword_hits}/{r.keyword_total}",
                 "answer_preview": r.answer_preview,
@@ -314,6 +324,8 @@ class 评估器:
             "tool_pass_count": tool_pass_count,
             "answer_pass_count": answer_pass_count,
             "hallucination_count": hallucination_count,
+            # 诚实降级率：知识库未命中/工具不可用但如实标注，非编造幻觉
+            "honest_low_confidence": honest_low_confidence,
             # 质量三档分布（correct 即 answer_accuracy_rate 的分子）
             "quality": {
                 "correct": correct_count,
@@ -338,6 +350,7 @@ class 评估器:
                     "answer_pass": r.answer_pass,
                     "quality": r.quality,
                     "grounded": r.grounded,
+                    "honest_degrade": r.honest_degrade,
                     "latency_ms": r.latency_ms,
                     "answer_preview": r.answer_preview,
                     "error": r.error,

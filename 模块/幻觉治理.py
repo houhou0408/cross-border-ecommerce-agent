@@ -32,6 +32,9 @@ def _normalize_text(text: str) -> str:
     """
     t = re.sub(r"[|*#`_>\[\]()]", "", text)
     t = re.sub(r"-{3,}", " ", t)
+    # 删除 markdown 列表序号（"1. xxx" / "2、xxx" / "3) xxx"）：
+    # 序号是排版编号而非事实数字，不应参与覆盖率/数字溯源比对
+    t = re.sub(r"(^|\n)\s*\d+[.、)]", r"\1", t)
 
     def _fmt(m):
         s = m.group(0)
@@ -104,10 +107,39 @@ class 幻觉治理器:
             coverage = len(ans_tokens & ctx_tokens) / len(ans_tokens)
         else:
             coverage = 0.3
-        score += 0.5 * coverage
+        # 0.4 而非 0.5：答案的润色/解释性文字会天然稀释覆盖率，权重过高会把
+        # 事实正确但措辞丰富的答案误判为幻觉，给"工具事实支撑"让出空间
+        score += 0.4 * coverage
 
-        # ---- 3) 绝对化词惩罚 ----
-        abs_hits = [w for w in _ABSOLUTE_WORDS if w.lower() in answer.lower()]
+        # ---- 2.5) 工具事实支撑分：答案数字能在工具输出中溯源的比例 ----
+        # 关税/汇率/利润/物流等工具输出是"事实锚点"，答案引用了工具中的数字
+        # 即为有据可依（60% / 60.00 / 60.0 归一化后视为同一数字）
+        tool_nums = set(re.findall(r"\d+\.?\d*%?", _normalize_text(tool_context)))
+        ans_nums_all = set(re.findall(r"\d+\.?\d*%?", ans_norm))
+        if tool_nums and ans_nums_all:
+            num_support = len(ans_nums_all & tool_nums) / len(ans_nums_all)
+            score += 0.25 * num_support
+            # 核心数字可溯源率 >= 70%：答案大量引用工具事实，工具支撑充分，
+            # 即使解释性润色较多稀释覆盖率，也不应误判为幻觉
+            if num_support >= 0.7:
+                score += 0.05
+                suggestions.append("答案核心数字均在工具输出中可溯源，事实支撑充分")
+
+        # ---- 2.6) 诚实降级标注加分 ----
+        # 答案明确标注"未核实/以官方为准/不存在"等，说明 Agent 没有假装确定，
+        # 属于诚实的降级回答而非编造，不应按幻觉处理
+        _HONEST_HINTS = ("未核实", "未命中", "未检索", "以官方为准", "行业通用", "不存在", "无法提供")
+        if any(h in answer for h in _HONEST_HINTS):
+            score += 0.1
+            suggestions.append("答案已标注信息未核实/来源，属诚实降级而非编造")
+
+        # ---- 3) 绝对化词惩罚（排除"禁止/不要/避免绝对化"的合规语境）----
+        _abs_lower = answer.lower()
+        abs_hits = [
+            w for w in _ABSOLUTE_WORDS
+            if w.lower() in _abs_lower
+            and not re.search(rf"禁止.{{0,3}}{w}|不要.{{0,3}}{w}|避免.{{0,3}}{w}", _abs_lower)
+        ]
         if abs_hits:
             score -= 0.15
             suggestions.append(f"检测到绝对化表述{abs_hits}，建议改为留有余地的说法")
@@ -123,8 +155,8 @@ class 幻觉治理器:
         ctx_nums = set(re.findall(r"\d+\.?\d*%?", _normalize_text(support_context)))
         unsupported_nums = ans_nums - ctx_nums - {"0"}  # 允许 0
         # 仅当"大量数字无支撑"才扣分，避免个别格式差异/衍生数字导致整体误判
-        if unsupported_nums and len(ans_nums) > 2 and len(unsupported_nums) / len(ans_nums) > 0.3:
-            score -= 0.1
+        if unsupported_nums and len(ans_nums) > 2 and len(unsupported_nums) / len(ans_nums) > 0.4:
+            score -= 0.05
             suggestions.append(f"答案含上下文未出现的数字{list(unsupported_nums)[:5]}，请核实")
 
         # ---- 6) 归一化 ----
