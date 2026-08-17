@@ -174,7 +174,7 @@
     <div class="messages" id="messages">
       <div class="msg bot">
         <div class="avatar">🤖</div>
-        <div class="bubble">你好！我是跨境电商运营智能体。可以问我平台政策、关税汇率、生成 Listing，或直接给复合任务，例如「蓝牙音箱出口美国电子产品，货值500美元，查关税并换算成人民币」。</div>
+        <div class="bubble">你好！我是跨境电商运营智能体。可以问我平台政策、关税汇率、生成 Listing，或直接给复合任务，例如「电子产品出口美国，货值500美元，查关税并换算成人民币」。</div>
       </div>
     </div>
     <div class="examples">
@@ -194,7 +194,7 @@
     <!-- Listing 生成 -->
     <div class="panel">
       <h3><span class="ico">📝</span> Listing 生成</h3>
-      <div class="field"><label>产品名称</label><input id="ls-product" placeholder="如 蓝牙音箱"></div>
+      <div class="field"><label>产品名称</label><input id="ls-product" placeholder="请输入产品名称"></div>
       <div class="row">
         <div class="field"><label>平台</label>
           <select id="ls-platform"><option value="amazon">Amazon</option><option value="shopee">Shopee</option><option value="temu">Temu</option></select>
@@ -203,7 +203,7 @@
           <select id="ls-lang"><option value="zh">中文</option><option value="en">English</option></select>
         </div>
       </div>
-      <div class="field"><label>产品卖点（可选）</label><input id="ls-features" placeholder="如 IPX7防水, 续航20小时"></div>
+      <div class="field"><label>产品卖点（可选）</label><input id="ls-features" placeholder="请输入产品卖点"></div>
       <button class="panel-btn primary" onclick="genListing(this)">生成 Listing</button>
     </div>
 
@@ -249,7 +249,7 @@
 <script>
 const API = '';
 const examples = [
-  '蓝牙音箱出口美国电子产品，货值500美元，查关税并换算成人民币',
+  '电子产品出口美国，货值500美元，查关税并换算成人民币',
   'Shopee上架有什么规范要求？',
   '新手卖家做跨境电商，选品有什么建议？',
   '欧盟电子产品需要哪些认证？'

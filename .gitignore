@@ -28,6 +28,11 @@ libs/
 # ===== 用户上传的静态资源 =====
 静态资源/uploads/
 静态资源/videos/
+静态资源/images/
+
+# ===== 本地认证/会话数据 =====
+数据/tokens.json
+数据/users.json
 
 # ===== 虚拟环境 =====
 venv/

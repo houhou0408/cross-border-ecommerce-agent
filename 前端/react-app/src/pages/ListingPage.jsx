@@ -28,33 +28,16 @@ export default function ListingPage({ onDataChanged }) {
     }
   }
 
-  const presets = [
-    { label: '蓝牙音箱', product: '便携式蓝牙音箱', features: 'IPX7防水, 20小时续航, 重低音' },
-    { label: 'LED台灯', product: '智能LED台灯', features: '无极调光, 触控, USB供电' },
-    { label: '瑜伽垫', product: 'TPE瑜伽垫', features: '防滑, 6mm加厚, 环保材质' }
-  ]
-
   return (
     <div className="form-page">
       <div className="form-card">
         <h3>生成参数</h3>
-        <div className="quick-presets">
-          {presets.map((p) => (
-            <button
-              key={p.label}
-              className="preset-chip"
-              onClick={() => setForm({ ...form, product: p.product, features: p.features })}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
         <div className="field">
           <label>产品名称</label>
           <input
             value={form.product}
             onChange={(e) => setForm({ ...form, product: e.target.value })}
-            placeholder="如 蓝牙音箱"
+            placeholder="请输入产品名称"
           />
         </div>
         <div className="row">
@@ -79,7 +62,7 @@ export default function ListingPage({ onDataChanged }) {
           <input
             value={form.features}
             onChange={(e) => setForm({ ...form, features: e.target.value })}
-            placeholder="如 IPX7防水, 续航20小时"
+            placeholder="请输入产品卖点"
           />
         </div>
         {error && <div className="err-tip">{error}</div>}

@@ -90,13 +90,26 @@ def build_vectorstore(docs: List[Document] = None, force_rebuild: bool = False):
     return vs
 
 
-def load_vectorstore():
+def load_vectorstore(collection_name: str = None):
     """加载已持久化的 Chroma 向量库。
+
+    Args:
+        collection_name: None=默认全量库(cross_border_kb),
+                         或 "products"/"rules"/"listings"/"risks" 按分库加载。
 
     若向量库不存在则自动触发构建。
     """
     from langchain_chroma import Chroma
     from pathlib import Path
+
+    # 解析实际 collection 名称
+    collections = CHROMA_CONFIG.get("collections", {})
+    if collection_name is None:
+        actual_name = CHROMA_CONFIG["collection_name"]
+    elif collection_name in collections:
+        actual_name = collections[collection_name]
+    else:
+        actual_name = collection_name  # 兜底：直接用传入值
 
     persist_dir = Path(CHROMA_CONFIG["persist_dir"])
     embedding = get_embedding_model()
@@ -106,11 +119,11 @@ def load_vectorstore():
         return build_vectorstore()
 
     vs = Chroma(
-        collection_name=CHROMA_CONFIG["collection_name"],
+        collection_name=actual_name,
         embedding_function=embedding,
         persist_directory=CHROMA_CONFIG["persist_dir"],
     )
-    print(f"[切片向量化] 已加载向量库: {persist_dir}")
+    print(f"[切片向量化] 已加载向量库: {persist_dir}, collection={actual_name}")
     return vs
 
 
@@ -124,6 +137,35 @@ def add_documents(docs: List[Document]):
     vs = load_vectorstore()
     vs.add_documents(chunks)
     print(f"[切片向量化] 增量入库 {len(chunks)} 条切片")
+    return len(chunks)
+
+
+def add_documents_to_library(documents: list, library: str = "products"):
+    """将文档添加到指定知识库。
+
+    Args:
+        documents: LangChain Document 列表
+        library: "products"/"rules"/"listings"/"risks"
+    Returns:
+        写入的切片数。
+    """
+    from langchain_chroma import Chroma
+
+    collections = CHROMA_CONFIG.get("collections", {})
+    if library in collections:
+        collection_name = collections[library]
+    else:
+        collection_name = library  # 兜底：直接用传入值
+
+    chunks = split_documents(documents)
+    embedding = get_embedding_model()
+    vs = Chroma(
+        collection_name=collection_name,
+        embedding_function=embedding,
+        persist_directory=CHROMA_CONFIG["persist_dir"],
+    )
+    vs.add_documents(chunks)
+    print(f"[切片向量化] 增量入库 {library}({collection_name}): {len(chunks)} 条切片")
     return len(chunks)
 
 

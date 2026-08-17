@@ -38,8 +38,8 @@ TEST_SET: List[Dict[str, Any]] = [
     {
         "id": "T03",
         "query": "我想做电子产品出口美国，帮我分析选品",
-        "expected_tools": ["analyze_product"],
-        "expected_keywords": ["市场热度", "竞争", "利润", "推荐"],
+        "expected_tools": ["smart_selection"],
+        "expected_keywords": ["市场热度", "竞争", "利润", "蓝海", "红海", "开发建议"],
         "category": "选品分析",
     },
     {

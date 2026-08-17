@@ -27,6 +27,13 @@ export default function Message({ msg }) {
             {!isBot ? msg.text : null}
           </div>
 
+          {/* 用户消息附带的上传图片 */}
+          {!isBot && msg.image && (
+            <div className="msg-attach-image">
+              <img src={msg.image} alt="附件" />
+            </div>
+          )}
+
           {/* 可折叠：知识库检索溯源 */}
           {isBot && sources.length > 0 && (
             <div className={`trace ${traceOpen ? 'open' : ''}`}>

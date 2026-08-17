@@ -1,7 +1,16 @@
 // 运行统计页：独立展示可观测指标
+import { useEffect, useState } from 'react'
+import { api } from '../api'
+
 export default function StatsPage({ stats, version, onRefresh }) {
   // version 变化时父组件已刷新 stats，这里仅用于触发重渲染
   void version
+
+  const [collection, setCollection] = useState(null)
+
+  useEffect(() => {
+    api.collectionStatus().then(setCollection).catch(() => {})
+  }, [version])
 
   const total = stats?.total_calls || 0
   const latency = stats?.avg_latency_ms ? Math.round(stats.avg_latency_ms) : 0
@@ -38,6 +47,37 @@ export default function StatsPage({ stats, version, onRefresh }) {
           </div>
         ))}
       </div>
+
+      {/* 数据采集状态 */}
+      {collection && (
+        <div className="stat-detail collection-status">
+          <h3><span className="hd-tag grad-pink" /> 数据采集状态</h3>
+          <div className="collection-grid">
+            <div className="coll-card">
+              <div className="coll-icon grad-cyan">💱</div>
+              <div className="coll-info">
+                <div className="coll-title">汇率数据</div>
+                <div className="coll-source">{collection.汇率数据?.来源 || '未知'}</div>
+                <div className="coll-meta">
+                  <span className="coll-tag">{collection.汇率数据?.币种数 || 0} 个币种</span>
+                  <span className="coll-tag">{collection.汇率数据?.更新时间 || '-'}</span>
+                </div>
+              </div>
+            </div>
+            <div className="coll-card">
+              <div className="coll-icon grad-violet">📈</div>
+              <div className="coll-info">
+                <div className="coll-title">选品热度</div>
+                <div className="coll-source">{collection.选品热度?.来源 || '未知'}</div>
+                <div className="coll-meta">
+                  <span className="coll-tag">{collection.选品热度?.覆盖品类 || 0} 个品类</span>
+                  <span className="coll-tag">{collection.选品热度?.更新时间 || '-'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="stats-grid">
         <div className="stat-detail">

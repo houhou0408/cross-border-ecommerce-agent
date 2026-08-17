@@ -7,21 +7,24 @@ import StatsPage from './pages/StatsPage.jsx'
 import KbPage from './pages/KbPage.jsx'
 import EvalPage from './pages/EvalPage.jsx'
 import VideoPage from './pages/VideoPage.jsx'
-import { api } from './api.js'
+import LoginPage from './pages/LoginPage.jsx'
+import { api, tokenStore } from './api.js'
 
-// 左侧功能导航
+// 顶部水平导航（极简 B 端：纯文字，无图标）
 const NAV = [
-  { key: 'chat', label: '智能对话', icon: '💬', desc: 'ReAct 多任务编排' },
-  { key: 'kb', label: '知识库管理', icon: '📚', desc: '文档上传与检索配置' },
-  { key: 'video', label: '视频生成', icon: '🎬', desc: '商品宣传视频' },
-  { key: 'listing', label: 'Listing 生成', icon: '📝', desc: '产品文案生成' },
-  { key: 'tariff', label: '关税查询', icon: '🛃', desc: '跨境关税计算' },
-  { key: 'currency', label: '汇率换算', icon: '💱', desc: '多币种转换' },
-  { key: 'stats', label: '运行统计', icon: '📊', desc: '调用与可观测' },
-  { key: 'eval', label: '效果评估', icon: '🎯', desc: 'Agent 质量评估' }
+  { key: 'chat', label: '智能对话', desc: 'ReAct 多任务编排' },
+  { key: 'kb', label: '知识库管理', desc: '文档上传与检索配置' },
+  { key: 'video', label: '素材生成', desc: '视频与卖点图生成' },
+  { key: 'listing', label: 'Listing 生成', desc: '产品文案生成' },
+  { key: 'tariff', label: '关税查询', desc: '跨境关税计算' },
+  { key: 'currency', label: '汇率换算', desc: '多币种转换' },
+  { key: 'stats', label: '运行统计', desc: '调用与可观测' },
+  { key: 'eval', label: '效果评估', desc: 'Agent 质量评估' }
 ]
 
 export default function App() {
+  const [user, setUser] = useState(null)
+  const [authChecked, setAuthChecked] = useState(false)
   const [active, setActive] = useState('chat')
   const [health, setHealth] = useState('连接中')
   const [stats, setStats] = useState(null)
@@ -59,13 +62,44 @@ export default function App() {
     }
   }, [])
 
+  // 页面加载时检查 token 是否有效
   useEffect(() => {
+    const token = tokenStore.get()
+    if (!token) {
+      setAuthChecked(true)
+      return
+    }
+    api.getMe()
+      .then((d) => {
+        if (d.ok) setUser(d.user)
+        else tokenStore.clear()
+      })
+      .catch(() => tokenStore.clear())
+      .finally(() => setAuthChecked(true))
+  }, [])
+
+  // 退出登录
+  const onLogout = useCallback(async () => {
+    try {
+      await api.logout()
+    } catch {
+      /* 静默 */
+    }
+    tokenStore.clear()
+    setUser(null)
+    setActive('chat')
+    setSessions([])
+    setActiveSessionId(null)
+  }, [])
+
+  useEffect(() => {
+    if (!user) return
     checkHealth()
     refreshStats()
     refreshSessions()
     const t = setInterval(refreshStats, 15000)
     return () => clearInterval(t)
-  }, [checkHealth, refreshStats, refreshSessions])
+  }, [checkHealth, refreshStats, refreshSessions, user])
 
   const onDataChanged = useCallback(() => {
     refreshStats()
@@ -142,22 +176,43 @@ export default function App() {
 
   const activeNav = NAV.find((n) => n.key === active)
 
+  // 未登录或正在检查 token 时，显示登录页 / 加载中
+  if (!authChecked) {
+    return <div className="auth-loading"><span className="spinner" /> 正在验证登录状态...</div>
+  }
+  if (!user) {
+    return <LoginPage onLogin={setUser} />
+  }
+
   return (
     <div className="shell">
-      <aside className="nav">
-        <div className="nav-brand">
-          <div className="logo">🛒</div>
-          <div className="brand-text">
-            <div className="brand-title">跨境电商 AI Agent</div>
-            <div className="brand-sub">Cross-Border Agent</div>
-          </div>
+      {/* 顶部水平导航栏（上导航 + 下内容） */}
+      <header className="topbar">
+        <div className="topbar-brand">跨境电商 AI Agent</div>
+        <nav className="topbar-nav">
+          {NAV.map((item) => (
+            <button
+              key={item.key}
+              className={`topbar-tab ${active === item.key ? 'active' : ''}`}
+              onClick={() => setActive(item.key)}
+              title={item.desc}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+        <div className="topbar-user">
+          <span className="topbar-username">{user.username}</span>
+          <button className="topbar-logout" onClick={onLogout}>退出</button>
         </div>
+      </header>
 
-        {/* 「对话」标题 + 新建按钮（真实生效） */}
+      {/* 主内容区：对话页时左侧带会话列表 */}
+      <div className="main-wrap">
         {active === 'chat' && (
-          <>
+          <aside className="sess-sidebar">
             <div className="sess-head">
-              <span className="sess-title">对话</span>
+              <span className="sess-title">会话列表</span>
               <button className="sess-new" onClick={onNewChat} title="新建会话">
                 <span className="plus">+</span>
               </button>
@@ -189,58 +244,19 @@ export default function App() {
                 </div>
               ))}
             </div>
-          </>
+          </aside>
         )}
 
-        {/* 功能导航 */}
-        <nav className="nav-list">
-          {NAV.map((item) => (
-            <button
-              key={item.key}
-              className={`nav-item ${active === item.key ? 'active' : ''}`}
-              onClick={() => setActive(item.key)}
-            >
-              <span className="nav-icon">{item.icon}</span>
-              <span className="nav-text">
-                <span className="nav-label">{item.label}</span>
-                <span className="nav-desc">{item.desc}</span>
-              </span>
-            </button>
-          ))}
-        </nav>
-
-        <div className="nav-foot">
-          <div className="model-card">
-            <div className="mc-label">已接入</div>
-            <div className="mc-row">
-              <span className="mc-dot" />
-              <span>DeepSeek V4-Flash</span>
+        <main className="main">
+          <div className="page-body">{renderPage()}</div>
+          {toast && (
+            <div className="toast">
+              <span className="toast-icon">✓</span>
+              <span>{toast.msg}</span>
             </div>
-            <div className="mc-row">
-              <span className="mc-dot violet" />
-              <span>Chroma 向量库</span>
-            </div>
-          </div>
-        </div>
-      </aside>
-
-      <main className="main">
-        <header className="page-head">
-          <h2>{activeNav.label}</h2>
-          <span className="sep">|</span>
-          <p className="page-sub">{activeNav.desc}</p>
-          <span className="head-status">
-            <span className="status-dot" /> {health}
-          </span>
-        </header>
-        <div className="page-body">{renderPage()}</div>
-        {toast && (
-          <div className="toast">
-            <span className="toast-icon">✓</span>
-            <span>{toast.msg}</span>
-          </div>
-        )}
-      </main>
+          )}
+        </main>
+      </div>
     </div>
   )
 }

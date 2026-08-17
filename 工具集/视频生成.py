@@ -18,7 +18,7 @@ from typing import Dict, Any, Optional
 
 import requests
 
-from config import LOG_DIR, VIDEO_CONFIG
+from config import LOG_DIR, VIDEO_CONFIG, VIDEO_T2V_CONFIG
 from 工具集.数据库连接 import get_cursor
 
 # 视频生成任务存储
@@ -38,7 +38,7 @@ _FALLBACK_VIDEO = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sa
 # 从配置读取
 _API_KEY = VIDEO_CONFIG.get("api_key", "")
 _BASE_URL = VIDEO_CONFIG.get("base_url", "https://dashscope.aliyuncs.com/api/v1")
-_MODEL = VIDEO_CONFIG.get("model", "happyhorse-1.1-r2v")
+_MODEL = VIDEO_CONFIG.get("model", "happyhorse-i2v")
 
 
 def _save_upload_image(file_bytes: bytes, filename: str) -> str:
@@ -112,7 +112,7 @@ def _upload_image_to_dashscope(image_path: str) -> Optional[str]:
     try:
         from dashscope.utils.oss_utils import OssUtils
         oss_url, _ = OssUtils.upload(
-            model=_MODEL,
+            model="happyhorse-1.1-i2v",  # 固定用 HappyHorse 做 OSS 上传
             file_path=str(local_path),
             api_key=_API_KEY,
         )
@@ -124,7 +124,14 @@ def _upload_image_to_dashscope(image_path: str) -> Optional[str]:
 
 
 def _create_r2v_task(prompt: str, image_url: str) -> Optional[str]:
-    """创建 HappyHorse R2V 参考生视频任务，返回 task_id。"""
+    """创建 HappyHorse 图生视频任务，返回 task_id。
+
+    自动适配 I2V / R2V 两种模式：
+    - happyhorse-1.1-i2v：media.type 必须为 first_frame（首帧驱动生视频）
+    - happyhorse-1.1-r2v：media.type 为 reference_image（参考图生视频）
+    """
+    # 根据模型名自动选择 media type，I2V 用 first_frame，R2V 用 reference_image
+    media_type = "first_frame" if "i2v" in _MODEL.lower() else "reference_image"
     headers = {
         "Authorization": f"Bearer {_API_KEY}",
         "X-DashScope-Async": "enable",
@@ -136,7 +143,7 @@ def _create_r2v_task(prompt: str, image_url: str) -> Optional[str]:
         "input": {
             "prompt": prompt,
             "media": [
-                {"type": "reference_image", "url": image_url}
+                {"type": media_type, "url": image_url}
             ],
         },
         "parameters": {
@@ -247,6 +254,106 @@ def _do_fallback(prompt: str, image_path: str, reason: str = "") -> Dict[str, An
     }
 
 
+# ============ 文生视频（T2V）============
+
+def _create_t2v_task(prompt: str) -> Optional[str]:
+    """创建文生视频任务（通义万相 Wan2.1 T2V），返回 task_id。
+
+    与 R2V 的区别：不需要参考图片，input 只传 prompt。
+    """
+    headers = {
+        "Authorization": f"Bearer {_API_KEY}",
+        "X-DashScope-Async": "enable",
+        "Content-Type": "application/json",
+    }
+    body = {
+        "model": VIDEO_T2V_CONFIG.get("model", "wanx2.1-t2v-turbo"),
+        "input": {
+            "prompt": prompt,
+        },
+        "parameters": {
+            "resolution": VIDEO_T2V_CONFIG.get("resolution", "720P"),
+            "ratio": VIDEO_T2V_CONFIG.get("ratio", "16:9"),
+            "duration": VIDEO_T2V_CONFIG.get("duration", 5),
+        },
+    }
+    try:
+        r = requests.post(
+            f"{_BASE_URL}/services/aigc/video-generation/video-synthesis",
+            headers=headers,
+            json=body,
+            timeout=30,
+        )
+        if r.status_code == 200:
+            result = r.json()
+            task_id = result.get("output", {}).get("task_id")
+            if task_id:
+                print(f"[文生视频] 任务创建成功: {task_id}")
+                return task_id
+            print(f"[文生视频] 任务创建返回无 task_id: {result}")
+        else:
+            print(f"[文生视频] 任务创建失败 HTTP {r.status_code}: {r.text[:300]}")
+    except Exception as e:
+        print(f"[文生视频] 任务创建异常: {e}")
+    return None
+
+
+def generate_text_video_task(prompt: str) -> Dict[str, Any]:
+    """文生视频：纯文字描述生成视频（通义万相 Wan2.1 T2V）。
+
+    流程：创建 T2V 任务 → 轮询 → 下载视频
+    无需图片，仅凭文字描述生成视频。
+
+    Args:
+        prompt: 视频描述（如"一只猫在阳光下打盹，慵懒午后，暖色调"）
+
+    Returns:
+        dict: task_id / status / video_url / prompt / used_fallback
+    """
+    # 未配置 API Key → 降级
+    if not _API_KEY:
+        return _do_fallback(prompt, "", "，未配置 DASHSCOPE_API_KEY")
+
+    # 创建任务记录（文生视频无图片）
+    task = _create_task_record(prompt, "", "processing")
+    task["mode"] = "t2v"  # 标记文生视频模式
+    _save_task(task)
+
+    # 步骤1：创建 T2V 任务
+    print(f"[文生视频] 步骤1: 创建 T2V 任务 (model={VIDEO_T2V_CONFIG.get('model')})")
+    ds_task_id = _create_t2v_task(prompt)
+    if not ds_task_id:
+        return _do_fallback(prompt, "", "，任务创建失败")
+
+    # 步骤2：轮询任务状态（复用 R2V 的轮询逻辑）
+    print(f"[文生视频] 步骤2: 轮询任务 {ds_task_id}")
+    video_url = _poll_task(ds_task_id)
+    if not video_url:
+        return _do_fallback(prompt, "", "，视频生成超时或失败")
+
+    # 步骤3：下载视频到本地
+    print(f"[文生视频] 步骤3: 下载视频")
+    local_video = _download_video(video_url)
+
+    # 更新任务记录
+    task["video_url"] = local_video
+    task["status"] = "completed"
+    task["completed_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    task["used_fallback"] = False
+    _save_task(task)
+
+    return {
+        "task_id": task["id"],
+        "status": "completed",
+        "video_url": local_video,
+        "image_url": "",
+        "prompt": prompt,
+        "mode": "t2v",
+        "used_fallback": False,
+        "msg": "视频已生成（通义万相 Wan2.1 T2V）",
+    }
+
+
 def generate_video_task(prompt: str, image_path: str = "", image_bytes: bytes = None,
                         filename: str = "") -> Dict[str, Any]:
     """生成产品宣传视频（HappyHorse 1.1 R2V 参考生视频）。
@@ -328,24 +435,68 @@ def get_video_task(task_id: str) -> Optional[Dict]:
     return _load_tasks().get(task_id)
 
 
+def delete_video_task(task_id: str) -> bool:
+    """删除单个视频任务。"""
+    tasks = _load_tasks()
+    if task_id in tasks:
+        del tasks[task_id]
+        try:
+            with open(_TASK_DIR, "w", encoding="utf-8") as f:
+                json.dump(tasks, f, ensure_ascii=False, indent=2)
+            return True
+        except Exception as e:
+            print(f"[视频生成] 删除任务失败: {e}")
+    return False
+
+
 # ============ Agent 工具版（@tool 注册，供对话中调用） ============
 from langchain_core.tools import tool
 
 
 @tool("generate_promo_video")
-def 生成宣传视频(prompt: str) -> str:
-    """根据产品描述生成宣传视频。
+def 生成宣传视频(prompt: str, image_path: str = "") -> str:
+    """根据商品参考图生成宣传视频（图生视频模式）。
 
-    当用户要求"生成产品视频""做宣传视频"时调用此工具。
+    当用户要求"生成产品视频""做宣传视频"且提供了商品图片时调用此工具。
     会返回视频链接供用户查看。
 
+    重要：视频内容严格基于用户上传的商品参考图生成，prompt 仅描述运镜/场景氛围，
+    不影响参考图中的产品本身。若用户上传了图片，prompt 不要写具体商品名称
+    （如"蓝牙音箱"），应只描述场景氛围，避免与参考图产品冲突。
+
     Args:
-        prompt: 产品描述与卖点，如"防水蓝牙音箱，户外运动场景，阳光下展示质感"
+        prompt: 场景氛围描述，如"户外运动场景，阳光下展示质感，慢镜头特写"。有上传图时不要写商品名称。
+        image_path: 用户上传的商品图片路径（如 /uploads/xxx.jpg）。若用户消息含【用户已上传商品图片：xxx】则必传该路径，留空则走文生视频降级。
     """
-    result = generate_video_task(prompt=prompt, image_path="", image_bytes=None)
+    result = generate_video_task(prompt=prompt, image_path=image_path, image_bytes=None)
+    mode_note = "图生视频（HappyHorse 1.1 R2V）" if image_path else "文生视频降级（未提供图片）"
+    if image_path:
+        return (
+            f"视频已生成（{mode_note}，基于您上传的商品参考图）。\n"
+            f"场景描述：{prompt}\n"
+            f"视频链接：{result['video_url']}"
+        )
     return (
-        f"视频已生成。\n"
+        f"视频已生成（{mode_note}）。\n"
         f"产品描述：{prompt}\n"
+        f"视频链接：{result['video_url']}"
+    )
+
+
+@tool("generate_text_video")
+def 文生视频(prompt: str) -> str:
+    """根据文字描述生成视频（文生视频模式，无需图片）。
+
+    当用户要求"根据文字生成视频""文生视频""用描述生成视频"时调用此工具。
+    纯文字描述即可生成视频，适合创意短片、场景演示等。
+
+    Args:
+        prompt: 视频描述，如"一只猫在阳光下打盹，慵懒午后，暖色调，慢镜头"
+    """
+    result = generate_text_video_task(prompt=prompt)
+    return (
+        f"文生视频已生成。\n"
+        f"视频描述：{prompt}\n"
         f"视频链接：{result['video_url']}\n"
-        f"（提示：上传商品图片到「视频生成」页面可获得图生视频效果）"
+        f"生成模式：{result.get('mode', 't2v').upper()}（通义万相 Wan2.1）"
     )

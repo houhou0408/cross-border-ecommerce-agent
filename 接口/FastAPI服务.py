@@ -19,7 +19,7 @@ from pathlib import Path
 # 确保项目根目录在 sys.path（兼容直接运行）
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, Depends
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -32,7 +32,9 @@ from 模块.效果评估 import get_evaluator, TEST_SET
 from 工具集.关税查询 import 查询关税
 from 工具集.汇率转换 import 汇率换算
 from 工具集.Listing生成 import 生成产品Listing
-from 工具集.视频生成 import generate_video_task, list_video_tasks, get_video_task
+from 工具集.视频生成 import generate_video_task, generate_text_video_task, list_video_tasks, get_video_task, delete_video_task
+from 工具集.卖点图生成 import generate_selling_images, list_image_tasks, get_image_task, delete_image_task
+from 工具集.用户认证 import register, login, logout, get_user_by_token, get_current_user
 
 app = FastAPI(title="跨境电商 AI Agent", version="1.0.0")
 
@@ -49,14 +51,17 @@ if _DIST_DIR.exists():
 _STATIC_DIR = Path(__file__).resolve().parent.parent / "静态资源"
 (_STATIC_DIR / "uploads").mkdir(parents=True, exist_ok=True)
 (_STATIC_DIR / "videos").mkdir(parents=True, exist_ok=True)
+(_STATIC_DIR / "images").mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(_STATIC_DIR / "uploads")), name="uploads")
 app.mount("/videos", StaticFiles(directory=str(_STATIC_DIR / "videos")), name="videos")
+app.mount("/images", StaticFiles(directory=str(_STATIC_DIR / "images")), name="images")
 
 
 # ============ 请求/响应模型 ============
 class AskRequest(BaseModel):
-    query: str = Field(..., description="用户自然语言任务")
-    session_id: str = Field(None, description="会话ID，为空则新建会话")
+    query: str = Field(..., min_length=1, description="用户自然语言任务")
+    session_id: str | None = Field(None, description="会话ID，为空则新建会话")
+    image_path: str | None = Field(None, description="用户在对话中上传的商品图片路径（/uploads/xxx.jpg），供图生视频/卖点图工具使用")
 
 
 class ListingRequest(BaseModel):
@@ -78,6 +83,16 @@ class CurrencyRequest(BaseModel):
     amount: float
     from_currency: str
     to_currency: str
+
+
+class RegisterRequest(BaseModel):
+    username: str = Field(..., description="用户名，至少 2 字符")
+    password: str = Field(..., description="密码，至少 6 位")
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(..., description="用户名")
+    password: str = Field(..., description="密码")
 
 
 # ============ 接口 ============
@@ -105,6 +120,38 @@ def health():
     return {"status": "ok", "service": "跨境电商AIAgent"}
 
 
+# ============ 用户认证接口 ============
+@app.post("/auth/register")
+def auth_register(req: RegisterRequest):
+    """用户注册。"""
+    result = register(req.username, req.password)
+    if not result.get("ok"):
+        return {"ok": False, "error": result.get("error", "注册失败")}
+    return result
+
+
+@app.post("/auth/login")
+def auth_login(req: LoginRequest):
+    """用户登录，返回 token。"""
+    result = login(req.username, req.password)
+    if not result.get("ok"):
+        return {"ok": False, "error": result.get("error", "登录失败")}
+    return result
+
+
+@app.post("/auth/logout")
+def auth_logout(user: dict = Depends(get_current_user)):
+    """退出登录。"""
+    logout(user.get("token", ""))
+    return {"ok": True, "msg": "已退出登录"}
+
+
+@app.get("/auth/me")
+def auth_me(user: dict = Depends(get_current_user)):
+    """获取当前登录用户信息。"""
+    return {"ok": True, "user": {"id": user["id"], "username": user["username"]}}
+
+
 @app.post("/ask")
 def ask(req: AskRequest):
     """Agent 多任务问答主接口（支持多轮对话记忆）。
@@ -129,11 +176,16 @@ def ask(req: AskRequest):
     history = memory.get_history(session_id)
     chat_history = memory.to_langchain_messages(history)
 
+    # 若用户上传了商品图片，将图片路径以约定格式注入 query，供 Agent 调用图生视频/卖点图工具
+    effective_query = req.query
+    if req.image_path:
+        effective_query = f"【用户已上传商品图片：{req.image_path}】\n用户问题：{req.query}"
+
     # Agent 编排
-    result = agent.orchestrate(req.query, chat_history=chat_history, session_id=session_id)
+    result = agent.orchestrate(effective_query, chat_history=chat_history, session_id=session_id)
     result["session_id"] = session_id
 
-    # 写回记忆（user + assistant）
+    # 写回记忆（user + assistant，存原始问题不含图片标记）
     memory.add_message(session_id, "user", req.query)
     memory.add_message(session_id, "assistant", result.get("answer", ""), {
         "tools_used": result.get("tools_used", []),
@@ -143,6 +195,22 @@ def ask(req: AskRequest):
     })
 
     return result
+
+
+@app.post("/chat/upload-image")
+async def chat_upload_image(file: UploadFile = File(...)):
+    """对话页上传商品图片：保存后返回 image_path，供 /ask 调用时携带。
+
+    与「视频生成」「卖点图」页面的上传逻辑一致，复用 _save_upload_image。
+    """
+    from 工具集.视频生成 import _save_upload_image
+    if not file.content_type or not file.content_type.startswith("image/"):
+        return {"error": "仅支持图片文件"}
+    data = await file.read()
+    if not data:
+        return {"error": "图片内容为空"}
+    image_path = _save_upload_image(data, file.filename or "chat_image.jpg")
+    return {"image_path": image_path, "url": image_path}
 
 
 # ============ 会话管理接口（记忆模块） ============
@@ -214,6 +282,13 @@ def currency(req: CurrencyRequest):
 def stats():
     """运行统计。"""
     return get_logger().stats()
+
+
+@app.get("/collection/status")
+def collection_status():
+    """数据采集模块状态（汇率/选品热度的数据来源与更新时间）。"""
+    from 工具集.数据采集 import get_collection_status
+    return get_collection_status()
 
 
 # ============ 知识库管理接口（文档上传/列表/删除） ============
@@ -301,6 +376,20 @@ def video_tasks():
     return {"tasks": list_video_tasks()}
 
 
+class TextVideoRequest(BaseModel):
+    prompt: str = Field(..., description="视频描述文字")
+
+
+@app.post("/video/text-to-video")
+def video_text_to_video(req: TextVideoRequest):
+    """文生视频：纯文字描述生成视频（通义万相 Wan2.1 T2V）。
+
+    无需图片，仅凭文字描述生成视频。
+    未配置 VIDEO_API_KEY 时返回示例视频（降级，保证可演示）。
+    """
+    return generate_text_video_task(prompt=req.prompt)
+
+
 @app.get("/video/tasks/{task_id}")
 def video_task_detail(task_id: str):
     """查询单个视频任务状态。"""
@@ -308,6 +397,59 @@ def video_task_detail(task_id: str):
     if not t:
         return {"error": "任务不存在"}
     return t
+
+
+@app.delete("/video/tasks/{task_id}")
+def video_task_delete(task_id: str):
+    """删除单个视频任务。"""
+    ok = delete_video_task(task_id)
+    return {"deleted": ok, "task_id": task_id}
+
+
+# ============ 卖点图生成接口（商品图 → 全套电商营销图） ============
+@app.post("/image/generate-batch")
+async def image_generate_batch(
+    file: UploadFile = File(...),
+    product: str = Form(""),
+    features: str = Form(""),
+):
+    """上传商品图片 + 描述，生成全套电商卖点图（4 种类型）。
+
+    流程：保存商品原图 → 调用通义万相 T2I 生成 4 种营销图 → 返回图片URL。
+    未配置 DASHSCOPE_API_KEY 时返回占位图（降级，保证可演示）。
+
+    生成类型：白底主图 / 场景应用图 / 卖点标注图 / 详情长图
+    """
+    img_bytes = await file.read()
+    result = generate_selling_images(
+        product=product or "产品",
+        features=features,
+        image_bytes=img_bytes,
+        filename=file.filename or "product.jpg",
+    )
+    return result
+
+
+@app.get("/image/tasks")
+def image_tasks():
+    """列出所有卖点图生成任务。"""
+    return {"tasks": list_image_tasks()}
+
+
+@app.get("/image/tasks/{task_id}")
+def image_task_detail(task_id: str):
+    """查询单个卖点图任务状态。"""
+    t = get_image_task(task_id)
+    if not t:
+        return {"error": "任务不存在"}
+    return t
+
+
+@app.delete("/image/tasks/{task_id}")
+def image_task_delete(task_id: str):
+    """删除单个卖点图任务。"""
+    ok = delete_image_task(task_id)
+    return {"deleted": ok, "task_id": task_id}
 
 
 if __name__ == "__main__":

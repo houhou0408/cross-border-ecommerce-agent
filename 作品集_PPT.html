@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>跨境电商 AI Agent · 作品集 PPT</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.0.4/reveal.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.0.4/theme/white.min.css">
+<style>
+:root {
+  --c-ink: #0a1929; --c-muted: #6b7280; --c-accent: #1d4ed8;
+  --c-accent-soft: #eff4ff; --c-line: #e5e7eb; --c-bg: #fafaf7;
+  --c-green: #16a34a; --c-amber: #d97706;
+}
+.reveal { font-size: 24px; }
+.reveal .slides { text-align: left; }
+.reveal .slides section { padding: 50px 70px; }
+.reveal h2 { font-size: 1.5em; font-weight: 700; color: var(--c-ink); margin-bottom: 0.3em; letter-spacing: -0.02em; }
+.reveal h3 { font-size: 1em; font-weight: 600; color: var(--c-ink); margin-bottom: 0.4em; }
+.reveal h4 { font-size: 0.75em; font-weight: 600; color: var(--c-accent); margin-bottom: 6px; }
+.reveal p, .reveal li { font-size: 0.55em; line-height: 1.8; color: var(--c-ink); }
+.reveal li { margin-bottom: 0.2em; }
+.reveal ul { margin-left: 1.2em; }
+.reveal small { font-size: 0.75em; color: var(--c-muted); }
+
+.tag { display: inline-block; padding: 2px 8px; font-size: 0.7em; background: var(--c-accent-soft); color: var(--c-accent); border-radius: 3px; margin-right: 5px; font-weight: 500; }
+.tag-green { background: #f0fdf4; color: var(--c-green); }
+.tag-amber { background: #fffbeb; color: var(--c-amber); }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 16px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 16px; }
+
+.card { background: #fff; border: 1px solid var(--c-line); border-radius: 6px; padding: 18px 20px; }
+.card h4 { font-size: 0.6em; }
+.card p, .card li { font-size: 0.46em; color: var(--c-muted); margin-bottom: 3px; }
+.card ul { margin-left: 1em; }
+
+.num-box { text-align: center; padding: 12px; }
+.num-box .num { font-size: 2em; font-weight: 700; color: var(--c-accent); line-height: 1; }
+.num-box .label { font-size: 0.42em; color: var(--c-muted); margin-top: 4px; }
+
+.flow { display: flex; align-items: center; gap: 10px; margin: 14px 0; font-size: 0.48em; }
+.flow-step { background: var(--c-accent-soft); border: 1px solid var(--c-accent); border-radius: 4px; padding: 8px 12px; text-align: center; flex: 1; font-weight: 500; color: var(--c-accent); }
+.flow-arrow { color: var(--c-muted); font-weight: bold; }
+
+.arch-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.arch-label { font-size: 0.42em; color: var(--c-accent); width: 120px; text-align: right; flex-shrink: 0; }
+.arch-items { display: flex; gap: 6px; flex: 1; flex-wrap: wrap; }
+.arch-item { font-size: 0.38em; padding: 4px 10px; background: var(--c-bg); border: 1px solid var(--c-line); border-radius: 3px; }
+
+.tb { width: 100%; border-collapse: collapse; font-size: 0.44em; margin-top: 12px; }
+.tb th { background: var(--c-bg); padding: 6px 10px; text-align: left; color: var(--c-muted); font-weight: 500; border-bottom: 1px solid var(--c-line); }
+.tb td { padding: 6px 10px; border-bottom: 1px solid var(--c-line); vertical-align: top; }
+
+.step-box { border: 1px solid var(--c-line); border-radius: 4px; padding: 12px 16px; margin-bottom: 10px; }
+.step-num { font-size: 0.38em; color: var(--c-accent); font-weight: 600; margin-bottom: 4px; }
+.step-desc { font-size: 0.42em; color: var(--c-muted); line-height: 1.7; }
+
+.tool-detail { border-left: 3px solid var(--c-accent); padding-left: 14px; margin-bottom: 14px; }
+.tool-name { font-size: 0.52em; font-weight: 600; color: var(--c-ink); }
+.tool-desc { font-size: 0.42em; color: var(--c-muted); margin-top: 4px; line-height: 1.7; }
+.tool-flow { font-size: 0.38em; color: var(--c-accent); margin-top: 4px; font-family: monospace; }
+
+.case-item { border-left: 3px solid var(--c-accent); padding-left: 14px; margin-bottom: 12px; }
+.case-label { font-size: 0.42em; color: var(--c-accent); font-weight: 600; margin-bottom: 4px; }
+.case-text { font-size: 0.38em; color: var(--c-muted); line-height: 1.7; }
+
+.title-slide { text-align: center !important; padding-top: 100px !important; }
+.title-slide h1 { font-size: 2em; font-weight: 800; color: var(--c-ink); letter-spacing: -0.03em; }
+.title-slide .subtitle { font-size: 0.6em; color: var(--c-muted); margin-top: 14px; line-height: 1.6; }
+.title-slide .line { width: 50px; height: 3px; background: var(--c-accent); margin: 20px auto; }
+.title-slide .meta { font-size: 0.38em; color: var(--c-muted); margin-top: 30px; }
+
+code { font-family: 'Courier New', monospace; background: #f1f5f9; padding: 1px 5px; border-radius: 2px; font-size: 0.9em; }
+
+@media print {
+  .reveal .slides { display: block !important; position: static !important; transform: none !important; width: 100% !important; height: auto !important; left: 0 !important; top: 0 !important; }
+  .reveal .slides section { display: block !important; position: relative !important; width: 100% !important; height: auto !important; min-height: 100vh !important; page-break-after: always !important; top: 0 !important; left: 0 !important; transform: none !important; opacity: 1 !important; padding: 40px 60px !important; box-sizing: border-box !important; border: none !important; }
+  .reveal .slides section:last-child { page-break-after: avoid !important; }
+  .reveal .slides section.past, .reveal .slides section.present, .reveal .slides section.future { display: block !important; opacity: 1 !important; visibility: visible !important; }
+  .reveal .slide-number, .reveal .controls, .reveal .progress { display: none !important; }
+  body { background: white !important; }
+  @page { size: A4 portrait; margin: 0; }
+}
+</style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- ====== 封面 ====== -->
+<section class="title-slide">
+  <div class="line"></div>
+  <h1>跨境电商 AI Agent</h1>
+  <p class="subtitle">面向中国跨境卖家的全栈 AI 智能运营平台</p>
+  <p style="font-size: 0.5em; color: var(--c-ink); margin-top: 10px;">让 Agent 真正干活，而不只是聊天</p>
+  <p class="meta">
+    AI Agent 开发工程师 · 求职作品 · 2026<br>
+    Python · LangChain · React · DeepSeek · DashScope
+  </p>
+</section>
+
+<!-- ====== 项目背景与痛点 ====== -->
+<section>
+  <h2>项目背景：跨境卖家的真实痛点</h2>
+  <div class="grid-2" style="margin-top: 20px;">
+    <div class="card">
+      <h4>业务痛点</h4>
+      <p>一个 Listing 上线需要：查平台政策 → 查关税税率 → 算利润 → 写文案 → 做素材图 → 拍视频</p>
+      <p>每步都要打开不同工具网站，来回切换，效率极低</p>
+      <p>小团队没有专职运营，老板自己要查 4-5 个系统才能做出一个选品决策</p>
+    </div>
+    <div class="card">
+      <h4>技术痛点</h4>
+      <p>通用 AI 只能聊天，不知道关税、汇率、物流等实时数据</p>
+      <p>AI 容易"幻觉"——编造不存在的政策条款和数据</p>
+      <p>选品需要亚马逊真实竞品数据，但市面上 API 要么翻墙、要么贵</p>
+    </div>
+  </div>
+  <div style="margin-top: 16px; padding: 14px 20px; background: var(--c-accent-soft); border-radius: 6px;">
+    <h4 style="color: var(--c-accent);">解决思路</h4>
+    <p style="font-size: 0.46em; color: var(--c-ink);">
+      构建一个 AI Agent：用户用自然语言下达任务，Agent 自主调度工具链完成全链路运营操作。<br>
+      关键技术挑战：Function Call 工具编排、幻觉治理、多数据源容灾、多模态内容生成。
+    </p>
+  </div>
+</section>
+
+<!-- ====== 系统架构 ====== -->
+<section>
+  <h2>系统架构</h2>
+  <div style="margin-top: 16px;">
+    <div class="arch-row">
+      <div class="arch-label">前端</div>
+      <div class="arch-items">
+        <div class="arch-item" style="font-weight: 600;">React 18 + Vite 5</div>
+        <div class="arch-item">9 个页面</div>
+        <div class="arch-item">零 UI 库依赖</div>
+        <div class="arch-item">极简 B 端风格</div>
+      </div>
+    </div>
+    <div class="arch-row">
+      <div class="arch-label">API 层</div>
+      <div class="arch-items">
+        <div class="arch-item" style="font-weight: 600;">FastAPI + uvicorn</div>
+        <div class="arch-item">20+ REST 接口</div>
+        <div class="arch-item">自动 OpenAPI 文档</div>
+        <div class="arch-item">SSE 流式响应</div>
+      </div>
+    </div>
+    <div class="arch-row">
+      <div class="arch-label">Agent 编排</div>
+      <div class="arch-items">
+        <div class="arch-item" style="font-weight: 600;">LangChain 0.2 langgraph</div>
+        <div class="arch-item">ReAct 推理</div>
+        <div class="arch-item">Function Call 执行</div>
+        <div class="arch-item">工具链串联</div>
+      </div>
+    </div>
+    <div class="arch-row">
+      <div class="arch-label">工具层</div>
+      <div class="arch-items">
+        <div class="arch-item">智能选品</div>
+        <div class="arch-item">商品图选品</div>
+        <div class="arch-item">痛点分析</div>
+        <div class="arch-item">关税查询</div>
+        <div class="arch-item">汇率换算</div>
+        <div class="arch-item">利润计算</div>
+        <div class="arch-item">Listing生成</div>
+        <div class="arch-item">物流时效</div>
+        <div class="arch-item">宣传视频</div>
+        <div class="arch-item">卖点图</div>
+      </div>
+    </div>
+    <div class="arch-row">
+      <div class="arch-label">数据层</div>
+      <div class="arch-items">
+        <div class="arch-item" style="font-weight: 600;">Proboost MCP</div>
+        <div class="arch-item">Canopy API</div>
+        <div class="arch-item">Rainforest API</div>
+        <div class="arch-item">Chroma向量库</div>
+        <div class="arch-item">MySQL</div>
+      </div>
+    </div>
+    <div class="arch-row">
+      <div class="arch-label">治理层</div>
+      <div class="arch-items">
+        <div class="arch-item" style="font-weight: 600;">6步幻觉治理</div>
+        <div class="arch-item">多模型路由</div>
+        <div class="arch-item">日志统计</div>
+        <div class="arch-item">反馈闭环</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ====== Agent 调度核心 ====== -->
+<section>
+  <h2>Agent 调度核心：ReAct + Function Call</h2>
+  <p style="font-size: 0.5em; color: var(--c-muted); margin-top: 8px;">基于 LangChain 0.2 的 <code>create_agent</code>（底层 langgraph），13 个工具统一注册为 Function Call 签名</p>
+  <div style="margin-top: 16px;">
+    <div class="step-box">
+      <div class="step-num">STEP 1 · 用户输入</div>
+      <div class="step-desc">"把玻璃杯出口到美国，货值500美元，分析选品并算利润"</div>
+    </div>
+    <div class="step-box">
+      <div class="step-num">STEP 2 · Agent 推理（ReAct）</div>
+      <div class="step-desc">模型分析意图→需要选品数据→需要关税税率→需要利润计算→串行调用3个工具</div>
+    </div>
+    <div class="step-box">
+      <div class="step-num">STEP 3 · Function Call 执行</div>
+      <div class="step-desc">
+        <code>selection_by_image</code>(image_path, 玻璃杯) → <code>query_tariff</code>(美国, 玻璃制品, 500) → <code>calc_profit</code>(售价, 成本, 关税)
+      </div>
+    </div>
+    <div class="step-box">
+      <div class="step-num">STEP 4 · 幻觉治理</div>
+      <div class="step-desc">收集知识库上下文 + 所有工具返回 → 6步校验 → 低质量回答自动追加风险提示 → 最终答案</div>
+    </div>
+  </div>
+  <div style="margin-top: 10px; font-size: 0.42em; color: var(--c-muted);">
+    关键设计：tool_call_id 精确匹配机制——解决连续调用同名工具（如两次汇率换算）时结果错位问题
+  </div>
+</section>
+
+<!-- ====== 工具详解：智能选品 ====== -->
+<section>
+  <h2>工具详解：智能选品分析</h2>
+  <p style="font-size: 0.5em; color: var(--c-muted);">项目最复杂的工具，覆盖从数据采集到商业研判的全链路</p>
+  <div style="margin-top: 14px;">
+    <div class="tool-detail">
+      <div class="tool-name">1. 竞品数据采集</div>
+      <div class="tool-desc">三数据源自适应路由：Proboost MCP（国内直连）→ Canopy API（100次/月免费）→ Rainforest API（100次/月免费），四级降级链（缓存→MySQL→在线API→内置基线）</div>
+      <div class="tool-flow">fetch_rainforest_competitors("玻璃杯", "美国") → 按英文搜索词查 amazon.com → 解析标题/价格/评分/评论数/ASIN/商品图</div>
+    </div>
+    <div class="tool-detail">
+      <div class="tool-name">2. 成本利润核算</div>
+      <div class="tool-desc">对每个竞品套用自有成本模板：售价 − 采购成本 − 头程运费 − 平台佣金(15%) − 广告费率(10%) − 退货损耗 = 净利润。算完自动标记利润率合格/不合格</div>
+      <div class="tool-flow">批量利润核算 → 筛品过滤器（蓝海/中度/红海三级分级）</div>
+    </div>
+    <div class="tool-detail">
+      <div class="tool-name">3. 评论痛点拆解</div>
+      <div class="tool-desc">低评分竞品(≤4.2)→调用 Rainforest reviews API 拉真实评论文本→评分×评论数×价格三维交叉推断痛点类型→匹配改款方案→输出差异化卖点建议</div>
+      <div class="tool-flow">fetch_rainforest_reviews(asin) → 分析低评分竞品 → 推断痛点类型 → 7种改进方案映射</div>
+    </div>
+  </div>
+</section>
+
+<!-- ====== 工具详解：商品图选品 ====== -->
+<section>
+  <h2>工具详解：商品图智能选品（新增）</h2>
+  <p style="font-size: 0.5em; color: var(--c-muted);">上传一张商品照片，AI 自动识别品类后跑全套选品分析，零手动输入</p>
+
+  <div style="margin-top: 16px;">
+    <div class="flow" style="font-size: 0.44em;">
+      <div class="flow-step">用户上传<br>商品图</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">DashScope<br>Qwen-VL-plus</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">识别品类/材质<br>/风格/卖点</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">调用智能选品<br>（自动填品类）</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">痛点分析<br>（自动追加）</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">合并报告<br>一步输出</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top: 14px;">
+    <h4>Qwen-VL 提示词设计（关键工程细节）</h4>
+    <p>提示词要求模型从预设品类列表中选择最接近的（而非自由发挥）→ 确保输出能精准喂给下游选品工具。识别维度：品类、商品名、材质工艺、设计风格、适用市场、3-5个关键卖点</p>
+    <p style="margin-top: 6px;"><span class="tag">DashScope</span><span class="tag">Qwen-VL-plus</span><span class="tag">MCP SSE协议</span></p>
+  </div>
+</section>
+
+<!-- ====== 工具详解：多模态生成 ====== -->
+<section>
+  <h2>工具详解：多模态内容生成</h2>
+  <div class="grid-2" style="margin-top: 14px;">
+    <div class="card">
+      <h4>宣传视频生成</h4>
+      <p><strong>图生视频（I2V）：</strong>上传商品图→OssUtils.upload 上传 OSS→创建 Wan2.7-I2V 异步任务→轮询 task_id→下载视频</p>
+      <p><strong>文生视频（T2V）：</strong>纯文字描述，无需图片，适合创意短片</p>
+      <p><strong>技术点：</strong>异步任务制 + 轮询超时 300s + 降级示例视频兜底</p>
+      <p style="margin-top: 4px;"><span class="tag">DashScope</span><span class="tag">Wan2.7-I2V</span><span class="tag">HappyHorse</span></p>
+    </div>
+    <div class="card">
+      <h4>商品卖点图生成</h4>
+      <p><strong>一图生四图：</strong>上传商品原图→Wan2.7-Image 图生图→输出4种电商标准营销图</p>
+      <p>白底主图 / 场景应用图 / 卖点标注图 / 详情长图</p>
+      <p><strong>技术点：</strong>_KEEP_REF 约束确保生成图与原商品一致；场景图根据品类自动匹配场景描述；禁止生成中文文字防乱码</p>
+      <p style="margin-top: 4px;"><span class="tag">DashScope</span><span class="tag">Wan2.7-Image</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ====== 工具详解：其他工具 ====== -->
+<section>
+  <h2>工具详解：关税查询 & Listing生成</h2>
+  <div class="tool-detail">
+    <div class="tool-name">关税查询（query_tariff）</div>
+    <div class="tool-desc">
+      <strong>数据来源：</strong>基于 USITC HTS 2025、EU TARIC 2025、Japan Customs Tariff Schedule 官方税率手工整理<br>
+      <strong>支持品类：</strong>电子产品/服装/家居用品/玻璃制品/美妆/宠物用品/玩具/鞋类/灯具<br>
+      <strong>计算逻辑：</strong>应缴关税 = (货值+运费)×税率，低于免税额度时自动显示免征<br>
+      <strong>HS编码覆盖：</strong>玻璃制品 7013.37、电子产品 8517.62、家居用品 3924.10 等<br>
+      <strong>费率：</strong>美国最惠国 0%-25%、欧盟0%-17%、日本0%-10%
+    </div>
+  </div>
+  <div class="tool-detail">
+    <div class="tool-name">Listing生成（generate_listing）</div>
+    <div class="tool-desc">
+      <strong>精品/铺货双模式：</strong>精品模式含品牌故事+A+内容，铺货模式快速批量<br>
+      <strong>SEO 关键词分层：</strong>核心词→长尾词→场景词三级，配合五点描述+产品描述<br>
+      <strong>合规双检：</strong>违禁词过滤 + 极限词过滤，"第一""最好"等自动标记风险<br>
+      <strong>痛点差异化：</strong>从痛点分析结果提取竞品弱点，写入 Listing 作为差异化卖点<br>
+      <strong>多语言：</strong>支持英文/中文/日文输出
+    </div>
+  </div>
+</section>
+
+<!-- ====== 数据源架构 ====== -->
+<section>
+  <h2>核心技术：三数据源自适应路由</h2>
+  <p style="font-size: 0.5em; color: var(--c-muted);">解决海外 API 无法直接访问的痛点，自动检测可用数据源并路由</p>
+  <table class="tb" style="margin-top: 14px;">
+    <tr><th>数据源</th><th>类型</th><th>接入方式</th><th>免费额度</th><th>国内访问</th><th>路由优先级</th></tr>
+    <tr><td>Proboost MCP</td><td>阿里云市场 MCP</td><td>SSE + JSON-RPC + 转义JSON解析</td><td>按量计费</td><td style="color: var(--c-green);">直连</td><td>1st</td></tr>
+    <tr><td>Canopy API</td><td>海外 REST+GraphQL</td><td>API-KEY Header</td><td>100次/月</td><td style="color: var(--c-amber);">需代理</td><td>2nd</td></tr>
+    <tr><td>Rainforest API</td><td>海外 REST</td><td>api_key Query</td><td>100次/月</td><td style="color: var(--c-amber);">需代理</td><td>3rd</td></tr>
+  </table>
+  <div style="margin-top: 14px;">
+    <h4>路由逻辑</h4>
+    <div class="step-desc" style="font-size: 0.42em;">
+      <code>if PROBOOST_MCP_TOKEN: route to proboost</code><br>
+      <code>elif CANOPY_API_KEY: route to canopy</code><br>
+      <code>else: route to rainforest</code><br><br>
+      Proboost 接入难点：MCP 返回格式是 markdown 说明表+内嵌转义JSON，需特殊解析（花括号栈匹配+JSON unescape）
+    </div>
+  </div>
+</section>
+
+<!-- ====== 幻觉治理 ====== -->
+<section>
+  <h2>核心技术：六步幻觉治理</h2>
+  <p style="font-size: 0.5em; color: var(--c-muted);">项目最大技术难点——不是简单过滤，而是与 Function Call 协同工作</p>
+  <div class="grid-2" style="margin-top: 14px;">
+    <div class="card">
+      <h4>六步校验流程</h4>
+      <p>1. 未命中检测：KB 上下文是否覆盖答案领域</p>
+      <p>2. 关键词覆盖：答案关键词在上下文中出现率</p>
+      <p>3. 绝对化惩罚："一定""绝对""所有"等词降权</p>
+      <p>4. 长度检查：超出知识支撑范围的发散内容</p>
+      <p>5. 数字核查：关税/汇率数字是否来自工具</p>
+      <p>6. 归一化评分：0~1 置信度，低于阈值追加警告</p>
+    </div>
+    <div class="card">
+      <h4>关键 Bug 修复：双上下文</h4>
+      <p><strong>问题：</strong>Agent 正确调用 query_tariff + convert_currency，回答"关税 25%，约 899 元"，被误判幻觉</p>
+      <p><strong>根因：</strong>只收集 search_kb 返回做校验上下文，工具返回的数字在 KB 中找不到</p>
+      <p><strong>修复：</strong>新增 _collect_tool_context，综合上下文 = KB + 全部工具返回，工具返回的数字也算有效支撑</p>
+    </div>
+  </div>
+</section>
+
+<!-- ====== RAG 混合检索 ====== -->
+<section>
+  <h2>核心技术：混合检索 RAG</h2>
+  <div class="grid-2" style="margin-top: 14px;">
+    <div class="card">
+      <h4>知识库架构</h4>
+      <p>文档上传 → 500字切片(80字重叠) → BGE-small-zh-v1.5 向量化 → Chroma 存储</p>
+      <p>4个集合：产品参数库、平台规则库、爆款文案库、风险案例库</p>
+    </div>
+    <div class="card">
+      <h4>混合检索策略</h4>
+      <p><strong>问题：</strong>纯向量检索对专有名词（如"HS编码""FBA"）命中率低</p>
+      <p><strong>方案：</strong>向量检索(余弦相似度) + jieba关键词重叠率重排</p>
+      <p>加权融合：<code>final_score = 0.7×vec_score + 0.3×kw_score</code></p>
+      <p>阈值 0.35 过滤，低于则标记"知识库未命中"</p>
+    </div>
+  </div>
+  <div class="card" style="margin-top: 12px;">
+    <h4>多模型路由（附加创新）</h4>
+    <p>简单问题（翻译、格式转换）→ DeepSeek-fast（省成本）；复杂推理（选品分析、文案生成）→ DeepSeek-pro。自动根据 query 长度和关键词判断路由</p>
+  </div>
+</section>
+
+<!-- ====== 工程难点 ====== -->
+<section>
+  <h2>工程难点与踩坑记录</h2>
+  <div class="case-item">
+    <div class="case-label">#1 幻觉治理与 Function Call 协同（最难）</div>
+    <div class="case-text">Agent 基于工具结果正确回答被判幻觉→修复为双上下文校验（KB+工具返回）</div>
+  </div>
+  <div class="case-item">
+    <div class="case-label">#2 连续 tool_call 结果错位</div>
+    <div class="case-text">两次 convert_currency 结果交叉错位→改用 tool_call_id 精确匹配而非顺序索引</div>
+  </div>
+  <div class="case-item">
+    <div class="case-label">#3 DeepSeek 不支持中文 Function Name</div>
+    <div class="case-text">Invalid function name pattern → @tool("english_name")显式注册，Python函数名保留中文</div>
+  </div>
+  <div class="case-item">
+    <div class="case-label">#4 Pydantic v2 类型校验</div>
+    <div class="case-text">session_id: str = Field(None) 不规范，偶发 422 → 改为 str | None = Field(None)</div>
+  </div>
+  <div class="case-item">
+    <div class="case-label">#5 记忆模块会话删除 Bug</div>
+    <div class="case-text">add_message 降级逻辑生成双份 key → _mem_sessions 残留导致删不掉 → 直接构造 session 字典</div>
+  </div>
+  <div class="case-item">
+    <div class="case-label">#6 DashScope 模型迭代适配</div>
+    <div class="case-text">wanx2.1-t2i-turbo 下线→升级 wan2.7-image；happyhorse 视频黑屏→切换 wan2.7-i2v</div>
+  </div>
+</section>
+
+<!-- ====== 前度端实现 ====== -->
+<section>
+  <h2>前后端实现细节</h2>
+  <div class="grid-2" style="margin-top: 14px;">
+    <div class="card">
+      <h4>后端 FastAPI（20+ 接口）</h4>
+      <p>/chat/ask — Agent 核心问答（SSE 流式 + 多轮记忆）</p>
+      <p>/chat/upload-image — 对话页图片上传</p>
+      <p>/chat/sessions — 会话 CRUD（记忆模块持久化）</p>
+      <p>/video/generate — 视频生成（异步任务制）</p>
+      <p>/image/selling — 卖点图生成（4种类型）</p>
+      <p>/listing/generate — Listing 文案生成</p>
+      <p>/tariff/query — 关税查询</p>
+      <p>/stats — 运行统计（可观测性）</p>
+      <p>/kb/upload — 知识库文档上传</p>
+    </div>
+    <div class="card">
+      <h4>前端 React（9 个页面）</h4>
+      <p>智能对话 — SSE 流式 + 工具链可视化 + 图片上传</p>
+      <p>素材生成 — 图生视频/文生视频/卖点图 三模式切换</p>
+      <p>Listing生成 — 精品/铺货双模式表单</p>
+      <p>关税查询 — 独立工具页面</p>
+      <p>汇率换算 — 独立工具页面</p>
+      <p>知识库管理 — 文档上传/删除/统计</p>
+      <p>运行统计 — 可观测指标+数据采集状态</p>
+      <p>效果评估 — 6条测试集批量评估</p>
+      <p>用户登录 — pbkdf2_hmac + token 认证</p>
+    </div>
+  </div>
+</section>
+
+<!-- ====== 技术选型 ====== -->
+<section>
+  <h2>技术选型与理由</h2>
+  <table class="tb" style="margin-top: 12px;">
+    <tr><th>层级</th><th>技术</th><th>版本</th><th>选型理由</th></tr>
+    <tr><td>LLM</td><td>DeepSeek</td><td>v4 Flash</td><td>OpenAI兼容接口、中文能力强、成本低（不到GPT-4的1/10）</td></tr>
+    <tr><td>Agent框架</td><td>LangChain</td><td>0.2 + langgraph</td><td>create_agent 原生支持 ReAct+FC，社区活跃，面试认可度高</td></tr>
+    <tr><td>视觉识别</td><td>Qwen-VL-plus</td><td>DashScope</td><td>阿里云百炼，国内直连，多模态能力覆盖商品图分析</td></tr>
+    <tr><td>视频生成</td><td>Wan2.7 I2V/T2V</td><td>DashScope</td><td>首帧驱动+文本驱动双模式，1080P，最长15秒</td></tr>
+    <tr><td>图像生成</td><td>Wan2.7-Image</td><td>DashScope</td><td>支持图生图参考，_KEEP_REF 约束保持商品一致性</td></tr>
+    <tr><td>竞品数据</td><td>Proboost MCP</td><td>阿里云市场</td><td>国内直连，36个MCP工具，覆盖选品/评论/榜单/市场研究</td></tr>
+    <tr><td>向量嵌入</td><td>BGE-small-zh</td><td>v1.5</td><td>中文语义效果好，本地推理无需API，轻量（110MB）</td></tr>
+    <tr><td>向量库</td><td>Chroma</td><td>0.5</td><td>嵌入式部署，零配置，与LangChain原生集成</td></tr>
+    <tr><td>后端</td><td>FastAPI</td><td>latest</td><td>异步高性能，自动OpenAPI文档，SSE原生支持</td></tr>
+    <tr><td>前端</td><td>React + Vite</td><td>18 + 5</td><td>手写无UI库依赖，极简B端风格（浅白底+蓝色主色）</td></tr>
+  </table>
+</section>
+
+<!-- ====== 量化指标 ====== -->
+<section>
+  <h2>量化指标</h2>
+  <div class="grid-3" style="margin-top: 20px;">
+    <div class="card num-box">
+      <div class="num">13+</div>
+      <div class="label">Function Call 工具<br>覆盖跨境运营全链路</div>
+    </div>
+    <div class="card num-box">
+      <div class="num">36</div>
+      <div class="label">Proboost MCP 工具<br>亚马逊全维度数据</div>
+    </div>
+    <div class="card num-box">
+      <div class="num">20+</div>
+      <div class="label">FastAPI 接口<br>含 SSE 流式响应</div>
+    </div>
+    <div class="card num-box">
+      <div class="num">9</div>
+      <div class="label">React 前端页面<br>零 UI 库手写</div>
+    </div>
+    <div class="card num-box">
+      <div class="num">6</div>
+      <div class="label">评估测试用例<br>3大指标可量化</div>
+    </div>
+    <div class="card num-box">
+      <div class="num">17+</div>
+      <div class="label">工程踩坑记录<br>每个有根因+方案</div>
+    </div>
+  </div>
+</section>
+
+<!-- ====== 结束 ====== -->
+<section class="title-slide">
+  <div class="line"></div>
+  <h1>谢谢</h1>
+  <p class="subtitle">跨境电商 AI Agent · 求职作品</p>
+  <p style="font-size: 0.5em; color: var(--c-ink); margin-top: 10px;">让 Agent 真正干活，而不只是聊天</p>
+  <p class="meta">
+    AI Agent 开发工程师<br>
+    Python · LangChain · React · DeepSeek · DashScope<br>
+    2026
+  </p>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.0.4/reveal.min.js"></script>
+<script>
+Reveal.initialize({
+  width: 720, height: 960, margin: 0.06,
+  transition: 'slide', hash: true, slideNumber: 'c/t',
+});
+</script>
+</body>
+</html>

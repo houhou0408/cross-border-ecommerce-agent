@@ -229,8 +229,8 @@ class 记忆管理器:
         # 降级
         sess = self._mem_sessions.get(session_id)
         if not sess:
-            sess = self.create_session()
-            sess["id"] = session_id
+            now = _now()
+            sess = {"id": session_id, "title": "新对话", "created_at": now, "updated_at": now, "messages": []}
             self._mem_sessions[session_id] = sess
         sess["messages"].append({"role": role, "content": content, "meta": meta, "created_at": now})
         sess["updated_at"] = now

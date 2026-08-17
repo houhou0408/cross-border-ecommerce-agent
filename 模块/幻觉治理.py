@@ -145,9 +145,9 @@ class 幻觉治理器:
             # 即使通过校验，若建议里有"知识库未命中"提示，也追加提醒（更严谨）
             kb_miss_tip = [s for s in result.suggestions if "知识库未命中" in s]
             if kb_miss_tip:
-                return answer + "\n\n💡 提示：部分信息来自工具结果，建议以官方政策为准。"
+                return answer + "\n\n[提示] 部分信息来自工具结果，建议以官方政策为准。"
             return answer
-        tag = "\n\n⚠️ 幻觉提示：本回答置信度较低，相关数据未在知识库中完全核实，请以官方政策为准。"
+        tag = "\n\n[注意] 本回答置信度较低，相关数据未在知识库中完全核实，请以官方政策为准。"
         return answer + tag
 
 

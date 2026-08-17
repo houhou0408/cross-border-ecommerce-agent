@@ -10,10 +10,22 @@
 from typing import List, Dict, Any
 from dataclasses import dataclass, field
 
-import jieba
+try:
+    import jieba
+    _HAS_JIEBA = True
+except ImportError:
+    jieba = None
+    _HAS_JIEBA = False
 
 from config import RETRIEVAL_CONFIG
 from 模块.切片向量化 import load_vectorstore
+
+
+def _tokenize(text: str) -> List[str]:
+    """分词：优先 jieba，未安装时退化为字符切分（保证可启动）。"""
+    if _HAS_JIEBA:
+        return list(jieba.cut(text))
+    return [c for c in text if c.strip()]
 
 
 @dataclass
@@ -28,8 +40,14 @@ class RetrievalResult:
 class 检索器:
     """混合检索器：向量召回 + 关键词重排。"""
 
-    def __init__(self, vectorstore=None):
-        self.vectorstore = vectorstore or load_vectorstore()
+    def __init__(self, vectorstore=None, library: str = None):
+        self.library = library
+        if vectorstore is not None:
+            self.vectorstore = vectorstore
+        elif library is not None:
+            self.vectorstore = load_vectorstore(collection_name=library)
+        else:
+            self.vectorstore = load_vectorstore()
         self.retriever = self.vectorstore.as_retriever(
             search_type="similarity",
             search_kwargs={"k": RETRIEVAL_CONFIG["top_k"] * 2},  # 多召回再重排
@@ -38,8 +56,8 @@ class 检索器:
     @staticmethod
     def _keyword_overlap(query: str, doc_text: str) -> float:
         """关键词重排分：query 与 doc 的分词重叠率。"""
-        q_tokens = set(jieba.lcut(query))
-        d_tokens = set(jieba.lcut(doc_text))
+        q_tokens = set(_tokenize(query))
+        d_tokens = set(_tokenize(doc_text))
         # 过滤单字与标点
         q_tokens = {t for t in q_tokens if len(t.strip()) > 1}
         d_tokens = {t for t in d_tokens if len(t.strip()) > 1}
@@ -67,11 +85,14 @@ class 检索器:
             kw_score = self._keyword_overlap(query, doc.page_content)
             # 融合：向量 0.7 + 关键词 0.3
             fusion = 0.7 * vec_score + 0.3 * kw_score
+            meta = dict(doc.metadata)
+            if self.library:
+                meta["library"] = self.library
             results.append(RetrievalResult(
                 content=doc.page_content,
                 score=round(fusion, 4),
                 source=doc.metadata.get("source", "未知"),
-                metadata=doc.metadata,
+                metadata=meta,
             ))
 
         # 过滤低分 + 排序 + 截断
@@ -92,11 +113,14 @@ class 检索器:
         for doc, rel_score in raw:
             kw_score = self._keyword_overlap(query, doc.page_content)
             fusion = 0.7 * float(rel_score) + 0.3 * kw_score
+            meta = dict(doc.metadata)
+            if self.library:
+                meta["library"] = self.library
             results.append(RetrievalResult(
                 content=doc.page_content,
                 score=round(fusion, 4),
                 source=doc.metadata.get("source", "未知"),
-                metadata=doc.metadata,
+                metadata=meta,
             ))
         threshold = RETRIEVAL_CONFIG["score_threshold"]
         results = [r for r in results if r.score >= threshold]

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '../api.js'
 
-// 知识库管理页：文档上传/列表/删除
+// 知识库管理页：极简 B 端风格，纯文字 + 蓝色单一强调色
 export default function KbPage() {
   const [docs, setDocs] = useState([])
   const [loading, setLoading] = useState(true)
@@ -70,42 +70,33 @@ export default function KbPage() {
 
   return (
     <div className="kb-page">
-      {/* 统计概览 */}
-      <div className="kb-overview">
-        <div className="kb-ov-card grad-violet">
-          <span className="kb-ov-icon">📚</span>
-          <div>
-            <div className="kb-ov-num">{docs.length}</div>
-            <div className="kb-ov-label">文档总数</div>
-          </div>
+      {/* 统计面板：纯文字，上下结构 */}
+      <div className="kb-stats">
+        <div className="kb-stat-item">
+          <span className="kb-stat-num">{docs.length}</span>
+          <span className="kb-stat-label">文档总数</span>
         </div>
-        <div className="kb-ov-card grad-cyan">
-          <span className="kb-ov-icon">🧩</span>
-          <div>
-            <div className="kb-ov-num">{totalChunks}</div>
-            <div className="kb-ov-label">切片总数</div>
-          </div>
+        <div className="kb-stat-divider" />
+        <div className="kb-stat-item">
+          <span className="kb-stat-num">{totalChunks}</span>
+          <span className="kb-stat-label">切片总数</span>
         </div>
-        <div className="kb-ov-card grad-green">
-          <span className="kb-ov-icon">⚡</span>
-          <div>
-            <div className="kb-ov-num">BGE</div>
-            <div className="kb-ov-label">嵌入模型</div>
-          </div>
+        <div className="kb-stat-divider" />
+        <div className="kb-stat-item">
+          <span className="kb-stat-num kb-stat-text">BGE</span>
+          <span className="kb-stat-label">嵌入模型</span>
         </div>
-        <div className="kb-ov-card grad-pink">
-          <span className="kb-ov-icon">💾</span>
-          <div>
-            <div className="kb-ov-num">Chroma</div>
-            <div className="kb-ov-label">向量数据库</div>
-          </div>
+        <div className="kb-stat-divider" />
+        <div className="kb-stat-item">
+          <span className="kb-stat-num kb-stat-text">Chroma</span>
+          <span className="kb-stat-label">向量数据库</span>
         </div>
       </div>
 
-      {/* 上传区 */}
-      <div className="kb-upload-card">
-        <h3>上传文档到知识库</h3>
-        <p className="form-hint">
+      {/* 上传区：仅虚线框 + 文字提示 */}
+      <div className="kb-section">
+        <h3 className="kb-title">上传文档到知识库</h3>
+        <p className="kb-desc">
           支持 .md / .txt 文件。上传后自动切片 → 向量化 → 写入 Chroma 向量库，立即可被 Agent 检索。
         </p>
         <div
@@ -120,7 +111,6 @@ export default function KbPage() {
             id="kb-file"
             style={{ display: 'none' }}
           />
-          <div className="kb-drop-icon">📤</div>
           <div className="kb-drop-text">
             {uploading ? '上传中...' : '点击或拖拽文件到此上传'}
           </div>
@@ -128,18 +118,16 @@ export default function KbPage() {
         </div>
       </div>
 
-      {/* 文档列表 */}
-      <div className="kb-list-card">
+      {/* 文档列表：纯文字，无图标 */}
+      <div className="kb-section">
         <div className="kb-list-head">
-          <h3>知识库文档</h3>
-          <span className="kb-stat">
-            共 {docs.length} 个文档 · {totalChunks} 条切片
-          </span>
+          <h3 className="kb-title">知识库文档</h3>
+          <span className="kb-count">共 {docs.length} 个文档 · {totalChunks} 条切片</span>
         </div>
         {loading ? (
           <div className="kb-empty"><span className="spinner" /> 加载中...</div>
         ) : docs.length === 0 ? (
-          <div className="kb-empty">📭 知识库暂无文档，上传第一个文档开始体验</div>
+          <div className="kb-empty">知识库暂无文档，上传第一个文档开始体验</div>
         ) : (
           <div className="kb-table">
             <div className="kb-row kb-head-row">
@@ -149,13 +137,10 @@ export default function KbPage() {
             </div>
             {docs.map((d, i) => (
               <div className="kb-row" key={i}>
-                <span className="kb-src">
-                  <span className="kb-file-icon">📄</span>
-                  {d.source}
-                </span>
+                <span className="kb-src">{d.source}</span>
                 <span className="kb-chunks">{d.chunks}</span>
                 <span>
-                  <button className="del-btn" onClick={() => onDelete(d.source)}>
+                  <button className="kb-del" onClick={() => onDelete(d.source)}>
                     删除
                   </button>
                 </span>
