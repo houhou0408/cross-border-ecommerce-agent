@@ -21,6 +21,28 @@ from config import HALLUCINATION_CONFIG
 _ABSOLUTE_WORDS = ["100%", "绝对", "永远", "一定", "保证", "百分百", "guaranteed", "always", "never"]
 
 
+def _normalize_text(text: str) -> str:
+    """归一化文本，用于答案与支撑上下文的比对（不影响最终展示）。
+
+    解决两类误判根源：
+    1. markdown 排版符号（|、**、# 等）干扰分词重合；
+    2. 数字格式不一致：答案写 60%、60.00，工具输出写 60.0%、60.00，
+       归一化后统一为纯数字（去千分位逗号、去尾零、去百分号），
+       让"答案引用了工具输出中的数字"能被正确识别为有支撑。
+    """
+    t = re.sub(r"[|*#`_>\[\]()]", "", text)
+    t = re.sub(r"-{3,}", " ", t)
+
+    def _fmt(m):
+        s = m.group(0)
+        s = s.replace(",", "").replace("%", "")
+        if "." in s:
+            s = s.rstrip("0").rstrip(".")
+        return s or "0"
+
+    return re.sub(r"\d[\d,]*\.?\d*%?", _fmt, t)
+
+
 @dataclass
 class 校验结果:
     """幻觉校验结果。"""
@@ -72,9 +94,12 @@ class 幻觉治理器:
             return 校验结果(False, score, "无知识库/工具支撑，疑似凭空生成", suggestions)
 
         # ---- 2) 关键词覆盖分：答案分词在【综合上下文】中的覆盖率 ----
+        # 用归一化文本比对：markdown 符号与数字格式差异不再干扰分词重合
         import jieba
-        ans_tokens = {t for t in jieba.lcut(answer) if len(t.strip()) > 1}
-        ctx_tokens = set(jieba.lcut(support_context))
+        ans_norm = _normalize_text(answer)
+        ctx_norm = _normalize_text(support_context)
+        ans_tokens = {t for t in jieba.lcut(ans_norm) if len(t.strip()) > 1}
+        ctx_tokens = set(jieba.lcut(ctx_norm))
         if ans_tokens:
             coverage = len(ans_tokens & ctx_tokens) / len(ans_tokens)
         else:
@@ -93,11 +118,12 @@ class 幻觉治理器:
             suggestions.append("答案过长，建议精简聚焦")
 
         # ---- 5) 数字/百分比核查：答案数字是否在【综合上下文】中出现 ----
-        # 关键修复：数字可在工具返回（关税税率/汇率/金额）中找到，也算有支撑
-        ans_nums = set(re.findall(r"\d+\.?\d*%?", answer))
-        ctx_nums = set(re.findall(r"\d+\.?\d*%?", support_context))
+        # 数字统一归一化后比对（60% / 60.00 / 60.0 视为同一个数字）
+        ans_nums = set(re.findall(r"\d+\.?\d*%?", _normalize_text(answer)))
+        ctx_nums = set(re.findall(r"\d+\.?\d*%?", _normalize_text(support_context)))
         unsupported_nums = ans_nums - ctx_nums - {"0"}  # 允许 0
-        if unsupported_nums and len(ans_nums) > 2:
+        # 仅当"大量数字无支撑"才扣分，避免个别格式差异/衍生数字导致整体误判
+        if unsupported_nums and len(ans_nums) > 2 and len(unsupported_nums) / len(ans_nums) > 0.3:
             score -= 0.1
             suggestions.append(f"答案含上下文未出现的数字{list(unsupported_nums)[:5]}，请核实")
 
