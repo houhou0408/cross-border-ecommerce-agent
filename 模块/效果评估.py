@@ -28,7 +28,9 @@ TEST_SET: List[Dict[str, Any]] = [
         "id": "T01",
         "query": "蓝牙音箱出口美国电子产品，货值500美元，查关税并换算成人民币",
         "expected_tools": ["query_tariff", "convert_currency"],
-        "expected_keywords": ["25", "7.19", "3597", "0", "免税"],
+        # 注意：不用具体汇率数字（汇率实时变动，7.19/3597 会过时），
+        # 只断言稳定要素：关税税率/附加税、免税额度、币种
+        "expected_keywords": ["25", "0", "免税", "人民币", "美元"],
         "category": "多任务编排",
         "source": "内部构建",
         "level": "难",
