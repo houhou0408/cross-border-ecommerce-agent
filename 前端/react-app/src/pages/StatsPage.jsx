@@ -1,6 +1,7 @@
 // 运行统计页：独立展示可观测指标
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import { IconChat, IconBolt, IconTarget, IconShield, IconRefresh, IconCurrency, IconTrend, IconTool } from '../components/Icons.jsx'
 
 export default function StatsPage({ stats, version, onRefresh }) {
   // version 变化时父组件已刷新 stats，这里仅用于触发重渲染
@@ -19,19 +20,20 @@ export default function StatsPage({ stats, version, onRefresh }) {
   const toolFreq = stats?.tool_frequency || {}
   const lastSession = stats?.last_session
 
+  // 空数据显示 --（区分"真实 0"与"未采集"）
   const cards = [
-    { label: '调用次数', value: total, color: 'info', icon: '📞', grad: 'blue' },
-    { label: '平均耗时', value: latency, unit: 'ms', color: 'purple', icon: '⚡', grad: 'violet' },
-    { label: '平均置信度', value: score, color: 'ok', icon: '✓', grad: 'green' },
-    { label: '幻觉拦截率', value: hallu, color: 'warn', icon: '⚠', grad: 'amber' }
+    { label: '调用次数', value: total, icon: <IconChat />, grad: 'blue' },
+    { label: '平均耗时', value: latency, unit: 'ms', icon: <IconBolt />, grad: 'violet' },
+    { label: '平均置信度', value: score, icon: <IconTarget />, grad: 'green' },
+    { label: '幻觉拦截率', value: hallu, icon: <IconShield />, grad: 'amber' }
   ]
 
   return (
     <div className="stats-page">
       <div className="stats-head">
-        <p className="stats-tip">📊 可观测指标随调用实时更新（每 15 秒自动刷新）</p>
+        <p className="stats-tip">可观测指标随调用实时更新（每 15 秒自动刷新）</p>
         <button className="btn" onClick={onRefresh}>
-          🔄 刷新
+          <IconRefresh /> 刷新
         </button>
       </div>
 
@@ -39,8 +41,8 @@ export default function StatsPage({ stats, version, onRefresh }) {
         {cards.map((c, i) => (
           <div className="stat-card" key={i}>
             <div className={`stat-icon grad-${c.grad}`}>{c.icon}</div>
-            <div className={`stat-value ${c.color}`}>
-              {c.value}
+            <div className="stat-value">
+              {c.value === 0 || c.value === '0.00' ? '--' : c.value}
               {c.unit ? <span className="unit">{c.unit}</span> : null}
             </div>
             <div className="stat-label">{c.label}</div>
@@ -51,10 +53,10 @@ export default function StatsPage({ stats, version, onRefresh }) {
       {/* 数据采集状态 */}
       {collection && (
         <div className="stat-detail collection-status">
-          <h3><span className="hd-tag grad-pink" /> 数据采集状态</h3>
+          <h3><span className="hd-tag" /> 数据采集状态</h3>
           <div className="collection-grid">
             <div className="coll-card">
-              <div className="coll-icon grad-cyan">💱</div>
+              <div className="coll-icon grad-cyan"><IconCurrency /></div>
               <div className="coll-info">
                 <div className="coll-title">汇率数据</div>
                 <div className="coll-source">{collection.汇率数据?.来源 || '未知'}</div>
@@ -65,7 +67,7 @@ export default function StatsPage({ stats, version, onRefresh }) {
               </div>
             </div>
             <div className="coll-card">
-              <div className="coll-icon grad-violet">📈</div>
+              <div className="coll-icon grad-violet"><IconTrend /></div>
               <div className="coll-info">
                 <div className="coll-title">选品热度</div>
                 <div className="coll-source">{collection.选品热度?.来源 || '未知'}</div>
@@ -84,7 +86,7 @@ export default function StatsPage({ stats, version, onRefresh }) {
           <h3><span className="hd-tag" /> 工具调用频次</h3>
           {Object.keys(toolFreq).length === 0 ? (
             <div className="result-empty">
-              <div className="result-empty-icon">🔧</div>
+              <div className="result-empty-icon"><IconTool /></div>
               <div className="result-empty-text">暂无调用记录</div>
               <div className="result-empty-hint">在智能对话中使用工具后此处将显示统计</div>
             </div>
@@ -96,7 +98,7 @@ export default function StatsPage({ stats, version, onRefresh }) {
                 const g = grads[idx % grads.length]
                 return (
                   <div className="tool-row" key={name}>
-                    <span className="tool-name">🔧 {name}</span>
+                    <span className="tool-name">{name}</span>
                     <div className="tool-bar">
                       <div className={`tool-bar-fill grad-${g}`} style={{ width: `${(count / max) * 100}%` }} />
                     </div>
@@ -109,10 +111,10 @@ export default function StatsPage({ stats, version, onRefresh }) {
         </div>
 
         <div className="stat-detail">
-          <h3><span className="hd-tag grad-cyan" /> 最近会话</h3>
+          <h3><span className="hd-tag" /> 最近会话</h3>
           {lastSession ? (
             <div className="last-session-box">
-              <div className="ls-icon">💬</div>
+              <div className="ls-icon"><IconChat /></div>
               <div className="ls-info">
                 <div className="ls-id">会话 ID</div>
                 <div className="ls-val">{lastSession}</div>
@@ -121,7 +123,7 @@ export default function StatsPage({ stats, version, onRefresh }) {
             </div>
           ) : (
             <div className="result-empty">
-              <div className="result-empty-icon">💬</div>
+              <div className="result-empty-icon"><IconChat /></div>
               <div className="result-empty-text">暂无会话</div>
               <div className="result-empty-hint">在智能对话中发起对话后将显示最近会话</div>
             </div>

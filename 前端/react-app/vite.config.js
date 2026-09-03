@@ -8,14 +8,24 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    proxy: {
-      '/ask': 'http://localhost:8000',
-      '/listing': 'http://localhost:8000',
-      '/tariff': 'http://localhost:8000',
-      '/currency': 'http://localhost:8000',
-      '/stats': 'http://localhost:8000',
-      '/health': 'http://localhost:8000'
-    }
+    proxy: Object.fromEntries(
+      [
+        '/ask',
+        '/listing',
+        '/tariff',
+        '/currency',
+        '/stats',
+        '/health',
+        '/auth',
+        '/sessions',
+        '/collection',
+        '/kb',
+        '/eval',
+        '/video',
+        '/image',
+        '/support'
+      ].map((p) => [p, 'http://127.0.0.1:8000'])
+    )
   },
   build: {
     outDir: '../dist',

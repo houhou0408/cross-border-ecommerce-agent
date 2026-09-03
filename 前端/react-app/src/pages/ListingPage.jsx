@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { api } from '../api.js'
+import { api } from '../api'
 import { renderMd } from '../utils/md.js'
+import { IconDoc } from '../components/Icons.jsx'
 
 // Listing 生成页：表单 + 结果展示
 export default function ListingPage({ onDataChanged }) {
@@ -31,8 +32,16 @@ export default function ListingPage({ onDataChanged }) {
   return (
     <div className="form-page">
       <div className="form-card">
-        <h3>生成参数</h3>
-        <div className="field">
+        <div className="form-head">
+          <h3>生成参数</h3>
+          <button
+            className="link-btn"
+            onClick={() => { setForm({ product: '', platform: 'amazon', language: 'zh', features: '' }); setError('') }}
+          >
+            重置
+          </button>
+        </div>
+        <div className={`field required ${error && !form.product.trim() ? 'invalid' : ''}`}>
           <label>产品名称</label>
           <input
             value={form.product}
@@ -67,7 +76,7 @@ export default function ListingPage({ onDataChanged }) {
         </div>
         {error && <div className="err-tip">{error}</div>}
         <button className="btn primary" onClick={onSubmit} disabled={loading}>
-          {loading ? '生成中…' : '✨ 生成 Listing'}
+          {loading ? '生成中…' : '生成 Listing'}
         </button>
       </div>
 
@@ -81,7 +90,7 @@ export default function ListingPage({ onDataChanged }) {
           <div className="result-text" dangerouslySetInnerHTML={{ __html: renderMd(result) }} />
         ) : (
           <div className="result-empty">
-            <div className="result-empty-icon">📝</div>
+            <div className="result-empty-icon"><IconDoc size={28} /></div>
             <div className="result-empty-text">填写参数后点击「生成 Listing」</div>
             <div className="result-empty-hint">Agent 将根据产品信息生成标题、五点描述、关键词</div>
           </div>

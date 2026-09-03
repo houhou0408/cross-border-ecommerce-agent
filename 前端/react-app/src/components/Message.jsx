@@ -65,7 +65,7 @@ export default function Message({ msg }) {
             <div className="toolline">
               {meta.tools_used.map((t, i) => (
                 <span key={i}>
-                  <span className="step">🔧 {t.tool}</span>
+                  <span className="step">{t.tool}</span>
                   {i < meta.tools_used.length - 1 ? <span className="arrow"> → </span> : null}
                 </span>
               ))}

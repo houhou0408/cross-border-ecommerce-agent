@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { api } from '../api.js'
+import { api } from '../api'
 import { renderMd } from '../utils/md.js'
+import { IconTariff } from '../components/Icons.jsx'
 
 // 关税查询页：表单 + 结果
 export default function TariffPage({ onDataChanged }) {
@@ -37,7 +38,15 @@ export default function TariffPage({ onDataChanged }) {
   return (
     <div className="form-page">
       <div className="form-card">
-        <h3>查询参数</h3>
+        <div className="form-head">
+          <h3>查询参数</h3>
+          <button
+            className="link-btn"
+            onClick={() => { setForm({ country: '美国', category: '电子产品', value: 500, freight: 0 }); setError('') }}
+          >
+            重置
+          </button>
+        </div>
         <div className="quick-presets">
           {presets.map((p) => (
             <button
@@ -50,11 +59,11 @@ export default function TariffPage({ onDataChanged }) {
           ))}
         </div>
         <div className="row">
-          <div className="field">
+          <div className="field required">
             <label>目的国</label>
             <input value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} />
           </div>
-          <div className="field">
+          <div className="field required">
             <label>商品类别</label>
             <input
               value={form.category}
@@ -82,7 +91,7 @@ export default function TariffPage({ onDataChanged }) {
         </div>
         {error && <div className="err-tip">{error}</div>}
         <button className="btn primary" onClick={onSubmit} disabled={loading}>
-          {loading ? '查询中…' : '🛃 查询关税'}
+          {loading ? '查询中…' : '查询关税'}
         </button>
       </div>
 
@@ -96,9 +105,9 @@ export default function TariffPage({ onDataChanged }) {
           <div className="result-text" dangerouslySetInnerHTML={{ __html: renderMd(result) }} />
         ) : (
           <div className="result-empty">
-            <div className="result-empty-icon">🛃</div>
+            <div className="result-empty-icon"><IconTariff size={28} /></div>
             <div className="result-empty-text">填写参数后点击「查询关税」</div>
-            <div className="result-empty-hint">将计算关税税率、完税价格、综合税费</div>
+            <div className="result-empty-hint">将计算关税税率、完税价格、综合税费与预估到岸成本</div>
           </div>
         )}
       </div>

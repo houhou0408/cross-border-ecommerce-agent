@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { api } from '../api.js'
 import Message from '../components/Message.jsx'
+import { IconChat } from '../components/Icons.jsx'
 
 // 买家模式快捷示例
 const BUYER_EXAMPLES = [
@@ -142,7 +143,7 @@ export default function SupportPage() {
         <div className="messages support-msgs" ref={boxRef}>
           {isEmpty && (
             <div className="chat-empty">
-              <div className="empty-icon">🎧</div>
+              <div className="empty-icon"><IconChat size={36} /></div>
               <h3 className="empty-title">
                 {mode === 'buyer' ? '欢迎咨询，我的客服为您服务' : '买家消息 → 一键生成话术'}
               </h3>

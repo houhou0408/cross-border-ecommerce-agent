@@ -42,7 +42,7 @@ export default function EvalPage() {
         <div className="eval-ov-head">
           <h3>Agent 效果评估</h3>
           <button className="btn primary" onClick={onRun} disabled={running || testset.length === 0}>
-            {running ? '评估中...' : '▶ 运行批量评估'}
+            {running ? '评估中...' : '运行批量评估'}
           </button>
         </div>
         <p className="form-hint">

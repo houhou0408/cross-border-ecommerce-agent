@@ -2,12 +2,13 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { api } from '../api.js'
 import Message from '../components/Message.jsx'
 import Lightbox from '../components/Lightbox.jsx'
+import { IconChat } from '../components/Icons.jsx'
 
 const EXAMPLES = [
-  '🔍 美国电子产品关税+换算人民币',
-  '📋 Shopee上架规范',
-  '💡 新手选品建议',
-  '🇪🇺 欧盟电子产品认证'
+  '美国电子产品关税+换算人民币',
+  'Shopee上架规范',
+  '新手选品建议',
+  '欧盟电子产品认证'
 ]
 const EXAMPLE_QUERIES = [
   '蓝牙音箱出口美国电子产品，货值500美元，查关税并换算成人民币',
@@ -17,8 +18,8 @@ const EXAMPLE_QUERIES = [
 ]
 // 上传图片后推荐的生成类问题
 const IMAGE_EXAMPLES = [
-  '🎬 用这张商品图生成宣传视频',
-  '🖼️ 基于这张图生成电商卖点图'
+  '用这张商品图生成宣传视频',
+  '基于这张图生成电商卖点图'
 ]
 
 // 智能对话页：支持多轮对话记忆（基于 session_id 加载历史）+ 发送中途停止
@@ -184,7 +185,7 @@ export default function ChatPage({ onDataChanged, onNewChat, sessionId, onSessio
         {/* 空状态引导（无会话 或 新会话无消息） */}
         {isEmpty && (
           <div className="chat-empty">
-            <div className="empty-icon">💬</div>
+            <div className="empty-icon"><IconChat size={36} /></div>
             <h3 className="empty-title">
               {hasSession ? '开始你的对话' : '新建对话开始使用'}
             </h3>

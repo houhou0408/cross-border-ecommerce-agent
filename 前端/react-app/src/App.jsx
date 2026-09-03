@@ -278,9 +278,9 @@ export default function App() {
   )
 }
 
-// 根据会话ID生成稳定颜色
+// 根据会话ID生成稳定的蓝色系头像底色（唯一主色规范：仅蓝色阶）
 function _colorOf(id) {
-  const colors = ['#6366f1', '#8b7ff7', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899']
+  const colors = ['#1d4ed8', '#2563eb', '#3b82f6', '#60a5fa', '#1e40af', '#3730a3']
   let hash = 0
   for (let i = 0; i < (id || '').length; i++) hash = id.charCodeAt(i) + ((hash << 5) - hash)
   return colors[Math.abs(hash) % colors.length]

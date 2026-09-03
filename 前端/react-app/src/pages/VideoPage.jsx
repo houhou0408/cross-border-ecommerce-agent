@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { api } from '../api.js'
+import { IconCamera, IconImage, IconDoc } from '../components/Icons.jsx'
 
 // 素材生成页：支持「图生视频」「文生视频」「卖点图生成」三种模式切换
 export default function VideoPage() {
@@ -142,19 +143,19 @@ export default function VideoPage() {
           className={`mode-tab ${mode === 'r2v' ? 'active' : ''}`}
           onClick={() => onSwitchMode('r2v')}
         >
-          📷 图生视频
+          图生视频
         </button>
         <button
           className={`mode-tab ${mode === 't2v' ? 'active' : ''}`}
           onClick={() => onSwitchMode('t2v')}
         >
-          ✏️ 文生视频
+          文生视频
         </button>
         <button
           className={`mode-tab ${mode === 'sell' ? 'active' : ''}`}
           onClick={() => onSwitchMode('sell')}
         >
-          🖼️ 卖点图生成
+          卖点图生成
         </button>
       </div>
 
@@ -192,16 +193,16 @@ export default function VideoPage() {
                   <img src={preview} alt="商品图" className="upload-preview" />
                   <div className="upload-overlay">
                     <button className="overlay-btn" onClick={(e) => { e.stopPropagation(); onReselect() }}>
-                      🔄 重新选择
+                      重新选择
                     </button>
                     <button className="overlay-btn danger" onClick={(e) => { e.stopPropagation(); onRemoveImage() }}>
-                      ✕ 移除
+                      移除
                     </button>
                   </div>
                 </>
               ) : (
                 <div className="upload-placeholder">
-                  <span className="upload-icon">📷</span>
+                  <span className="upload-icon"><IconCamera size={26} /></span>
                   <span>点击或拖拽上传商品图片</span>
                   <span className="upload-hint">支持 JPG / PNG</span>
                 </div>
@@ -234,7 +235,7 @@ export default function VideoPage() {
                 onClick={onGenerate}
                 disabled={!canGenerate}
               >
-                {generating ? '⏳ 生成中（4张图约1-2分钟）...' : '🖼️ 生成全套卖点图'}
+                {generating ? '生成中（4张图约1-2分钟）...' : '生成全套卖点图'}
               </button>
               {(file || product || features) && !generating && (
                 <button
@@ -273,7 +274,7 @@ export default function VideoPage() {
                 onClick={onGenerate}
                 disabled={!canGenerate}
               >
-                {generating ? '⏳ 生成中...' : '🎬 生成视频'}
+                {generating ? '生成中...' : '生成视频'}
               </button>
               {(file || prompt) && !generating && (
                 <button
@@ -320,7 +321,7 @@ export default function VideoPage() {
           </div>
           {result.used_fallback && (
             <p className="result-tip">
-              💡 当前为占位图。配置 DASHSCOPE_API_KEY 环境变量后可生成真实 AI 卖点图。
+              当前为占位图。配置 DASHSCOPE_API_KEY 环境变量后可生成真实 AI 卖点图。
             </p>
           )}
         </div>
@@ -360,7 +361,7 @@ export default function VideoPage() {
           )}
           {result.used_fallback && (
             <p className="result-tip">
-              💡 当前为示例视频。配置 DASHSCOPE_API_KEY 环境变量后可生成真实 AI 视频。
+              当前为示例视频。配置 DASHSCOPE_API_KEY 环境变量后可生成真实 AI 视频。
             </p>
           )}
         </div>
@@ -391,12 +392,12 @@ export default function VideoPage() {
             {history.map((t) => (
               <div className="hist-item" key={(t.kind || 'video') + '_' + t.id}>
                 {t.kind === 'image' ? (
-                  <span className="hist-thumb-text">🖼️</span>
+                  <span className="hist-thumb-text"><IconImage /></span>
                 ) : (
                   t.image_url ? (
                     <img src={t.image_url} alt="" className="hist-thumb" />
                   ) : (
-                    <span className="hist-thumb-text">✏️</span>
+                    <span className="hist-thumb-text"><IconDoc /></span>
                   )
                 )}
                 <div className="hist-info">

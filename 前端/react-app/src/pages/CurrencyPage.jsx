@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { api } from '../api.js'
+import { api } from '../api'
 import { renderMd } from '../utils/md.js'
+import { IconCurrency } from '../components/Icons.jsx'
 
 // 汇率换算页：表单 + 结果
 export default function CurrencyPage({ onDataChanged }) {
@@ -37,7 +38,15 @@ export default function CurrencyPage({ onDataChanged }) {
   return (
     <div className="form-page">
       <div className="form-card">
-        <h3>换算参数</h3>
+        <div className="form-head">
+          <h3>换算参数</h3>
+          <button
+            className="link-btn"
+            onClick={() => { setForm({ amount: 500, from: 'USD', to: 'CNY' }); setError('') }}
+          >
+            重置
+          </button>
+        </div>
         <div className="quick-presets">
           {presets.map((p) => (
             <button
@@ -69,7 +78,7 @@ export default function CurrencyPage({ onDataChanged }) {
         </div>
         {error && <div className="err-tip">{error}</div>}
         <button className="btn primary" onClick={onSubmit} disabled={loading}>
-          {loading ? '换算中…' : '💱 换算'}
+          {loading ? '换算中…' : '换算'}
         </button>
       </div>
 
@@ -83,7 +92,7 @@ export default function CurrencyPage({ onDataChanged }) {
           <div className="result-text" dangerouslySetInnerHTML={{ __html: renderMd(result) }} />
         ) : (
           <div className="result-empty">
-            <div className="result-empty-icon">💱</div>
+            <div className="result-empty-icon"><IconCurrency size={28} /></div>
             <div className="result-empty-text">填写参数后点击「换算」</div>
             <div className="result-empty-hint">支持 USD / EUR / JPY / CNY 等多币种实时汇率</div>
           </div>
