@@ -7,12 +7,14 @@ import StatsPage from './pages/StatsPage.jsx'
 import KbPage from './pages/KbPage.jsx'
 import EvalPage from './pages/EvalPage.jsx'
 import VideoPage from './pages/VideoPage.jsx'
+import SupportPage from './pages/SupportPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import { api, tokenStore } from './api.js'
 
 // 顶部水平导航（极简 B 端：纯文字，无图标）
 const NAV = [
   { key: 'chat', label: '智能对话', desc: 'ReAct 多任务编排' },
+  { key: 'support', label: '智能客服', desc: '买家接待与卖家话术' },
   { key: 'kb', label: '知识库管理', desc: '文档上传与检索配置' },
   { key: 'video', label: '素材生成', desc: '视频与卖点图生成' },
   { key: 'listing', label: 'Listing 生成', desc: '产品文案生成' },
@@ -155,6 +157,8 @@ export default function App() {
             onSessionChange={refreshSessions}
           />
         )
+      case 'support':
+        return <SupportPage />
       case 'kb':
         return <KbPage />
       case 'listing':

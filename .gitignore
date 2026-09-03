@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.*.local
+.env.docker
 *.key
 *.pem
 credentials.json
@@ -55,6 +56,7 @@ desktop.ini
 # ===== 前端（前端目录已有自己的 .gitignore）=====
 前端/react-app/node_modules/
 前端/react-app/dist/
+前端/dist/
 
 # ===== 个人文档（可选：注释掉则上传）=====
 面试技术文档.md

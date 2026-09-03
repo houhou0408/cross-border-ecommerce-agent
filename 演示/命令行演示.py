@@ -15,6 +15,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# 项目自带第三方依赖目录 libs/ 兜底，保证直接启动不缺包
+_libs_dir = Path(__file__).resolve().parent.parent / "libs"
+if _libs_dir.exists():
+    sys.path.insert(0, str(_libs_dir))
+
 from 模块.Agent调度 import get_agent
 from 模块.日志统计 import get_logger
 from 工具集.关税查询 import 查询关税

@@ -131,5 +131,10 @@ export const api = {
     return postForm('/image/generate-batch', fd, 360000)
   },
   listImageTasks: () => getJSON('/image/tasks'),
-  deleteImageTask: (taskId) => deleteJSON('/image/tasks/' + encodeURIComponent(taskId))
+  deleteImageTask: (taskId) => deleteJSON('/image/tasks/' + encodeURIComponent(taskId)),
+  // 智能客服
+  supportAsk: (query, mode, sessionId) => postJSON('/support/ask', { query, mode, session_id: sessionId || null }, 120000),
+  supportFaqTopics: () => getJSON('/support/faq/topics'),
+  supportReview: (body) => postJSON('/support/review', body, 30000),
+  supportTransfer: (sessionId) => postJSON('/support/transfer', { session_id: sessionId || null }, 30000)
 }

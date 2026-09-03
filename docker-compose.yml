@@ -1,0 +1,73 @@
+# ===== 跨境电商 AI Agent 一键部署 =====
+# 一条命令启动：docker compose up -d --build
+# 访问：http://localhost:8000
+
+name: cross-border-agent
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: cb-agent-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-cross_border_agent}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+      # 首次启动自动执行建库脚本
+      - ./数据/数据库初始化.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${MYSQL_PASSWORD:-root}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks: [cb-net]
+
+  fastapi:
+    build:
+      context: .
+    container_name: cb-agent-fastapi
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      # HF 国内镜像加速 embedding 模型下载
+      HF_ENDPOINT: https://hf-mirror.com
+      # 数据库连接指向 compose 内部 mysql 服务（硬编码，避免被 .env 覆盖）
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-cross_border_agent}
+    # 注意：不要在 environment 里放本机 .env 的 MYSQL_HOST。
+    # 下方 env_file 注入敏感密钥（LLM/KL 素材 key 等），
+    # 而 environment 中 MYSQL_HOST 硬编码为内部服务名，优先级高于 env_file，确保连到容器内 MySQL。
+    env_file:
+      - path: .env
+        required: false   # 无 .env 也可启动（LLM 功能降级），配置后可启用完整能力
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    volumes:
+      # 持久化向量库、上传素材、日志、用户数据，避免重建容器丢失
+      - chroma_data:/app/向量库存储
+      - static_data:/app/静态资源
+      - logs_data:/app/日志
+      - appdata_data:/app/数据
+    networks: [cb-net]
+
+volumes:
+  mysql_data:
+  chroma_data:
+  static_data:
+  logs_data:
+  appdata_data:
+
+networks:
+  cb-net:
+    driver: bridge
