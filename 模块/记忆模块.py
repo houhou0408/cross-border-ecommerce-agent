@@ -54,8 +54,10 @@ class 记忆管理器:
                 CREATE TABLE IF NOT EXISTS chat_session (
                     id VARCHAR(32) PRIMARY KEY,
                     title VARCHAR(200),
+                    user_id VARCHAR(32) NULL,
                     created_at DATETIME,
-                    updated_at DATETIME
+                    updated_at DATETIME,
+                    INDEX idx_session_user (user_id)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                 """
             )
@@ -72,6 +74,14 @@ class 记忆管理器:
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                 """
             )
+            # 存量表迁移：补 user_id 列（列已存在时报 1060，忽略即可）
+            try:
+                cur.execute(
+                    "ALTER TABLE chat_session ADD COLUMN user_id VARCHAR(32) NULL, "
+                    "ADD INDEX idx_session_user (user_id)"
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.info("[记忆模块] chat_session.user_id 迁移跳过（可能已存在）: %s", e)
 
     def _load_json(self) -> Dict[str, Dict[str, Any]]:
         """加载 JSON 降级文件。"""
@@ -92,17 +102,24 @@ class 记忆管理器:
             logger.warning("[记忆模块] JSON 持久化失败: %s", e)
 
     # ---------- 会话 CRUD ----------
-    def create_session(self, title: str = "新对话") -> Dict[str, Any]:
-        """新建会话，返回 {id, title, created_at, messages:[]}。"""
+    def create_session(self, title: str = "新对话", user_id: str = None) -> Dict[str, Any]:
+        """新建会话，返回 {id, title, user_id, created_at, messages:[]}。
+
+        Args:
+            title: 会话标题（首条用户消息会覆盖为问题前缀）
+            user_id: 归属用户 ID（数据隔离；None 视为遗留/匿名数据，列表不展示）
+        """
         sid = _new_session_id()
         now = _now()
-        session = {"id": sid, "title": title, "created_at": now, "updated_at": now, "messages": []}
+        session = {"id": sid, "title": title, "user_id": user_id,
+                   "created_at": now, "updated_at": now, "messages": []}
 
         with get_cursor() as cur:
             if cur is not None:
                 cur.execute(
-                    "INSERT INTO chat_session (id, title, created_at, updated_at) VALUES (%s,%s,%s,%s)",
-                    (sid, title, now, now),
+                    "INSERT INTO chat_session (id, title, user_id, created_at, updated_at) "
+                    "VALUES (%s,%s,%s,%s,%s)",
+                    (sid, title, user_id, now, now),
                 )
                 return session
         # 降级
@@ -110,12 +127,17 @@ class 记忆管理器:
         self._save_json()
         return session
 
-    def list_sessions(self) -> List[Dict[str, Any]]:
-        """列出所有会话（按更新时间倒序），返回简要信息列表。"""
+    def list_sessions(self, user_id: str = None) -> List[Dict[str, Any]]:
+        """列出指定用户的会话（按更新时间倒序）。
+
+        user_id IS NULL 的遗留会话不返回（数据隔离：谁创建谁能看）。
+        """
         with get_cursor() as cur:
             if cur is not None:
                 cur.execute(
-                    "SELECT id, title, created_at, updated_at FROM chat_session ORDER BY updated_at DESC"
+                    "SELECT id, title, user_id, created_at, updated_at FROM chat_session "
+                    "WHERE user_id=%s ORDER BY updated_at DESC",
+                    (user_id,),
                 )
                 rows = cur.fetchall()
                 # 统计每个会话消息数
@@ -133,7 +155,7 @@ class 记忆管理器:
                         "message_count": cnt["cnt"] if cnt else 0,
                     })
                 return result
-        # 降级
+        # 降级（JSON 同样按归属过滤，遗留无主会话不返回）
         return [
             {
                 "id": s["id"],
@@ -143,14 +165,14 @@ class 记忆管理器:
                 "message_count": len(s.get("messages", [])),
             }
             for s in sorted(
-                self._mem_sessions.values(),
+                (x for x in self._mem_sessions.values() if x.get("user_id") == user_id),
                 key=lambda x: x.get("updated_at", ""),
                 reverse=True,
             )
         ]
 
     def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """获取单个会话及其消息历史。"""
+        """获取单个会话及其消息历史（返回含 user_id，归属校验由调用方做）。"""
         with get_cursor() as cur:
             if cur is not None:
                 cur.execute("SELECT * FROM chat_session WHERE id=%s", (session_id,))
@@ -166,6 +188,7 @@ class 记忆管理器:
                 return {
                     "id": sess["id"],
                     "title": sess["title"],
+                    "user_id": sess.get("user_id"),
                     "created_at": str(sess["created_at"]),
                     "updated_at": str(sess["updated_at"]),
                     "messages": [
@@ -181,19 +204,31 @@ class 记忆管理器:
         # 降级
         return self._mem_sessions.get(session_id)
 
-    def delete_session(self, session_id: str) -> bool:
-        """删除会话。"""
+    def delete_session(self, session_id: str, user_id: str = None) -> bool:
+        """删除会话（带归属校验：user_id 不匹配返回 False，防越权删除他人会话）。"""
         with get_cursor() as cur:
             if cur is not None:
+                cur.execute("SELECT user_id FROM chat_session WHERE id=%s", (session_id,))
+                row = cur.fetchone()
+                if not row:
+                    return False
+                if user_id is not None and row.get("user_id") != user_id:
+                    logger.warning("[记忆模块] 用户 %s 越权删除会话 %s（属主 %s）",
+                                   user_id, session_id, row.get("user_id"))
+                    return False
                 cur.execute("DELETE FROM chat_message WHERE session_id=%s", (session_id,))
                 cur.execute("DELETE FROM chat_session WHERE id=%s", (session_id,))
                 return True
         # 降级
-        if session_id in self._mem_sessions:
-            del self._mem_sessions[session_id]
-            self._save_json()
-            return True
-        return False
+        sess = self._mem_sessions.get(session_id)
+        if not sess:
+            return False
+        if user_id is not None and sess.get("user_id") != user_id:
+            logger.warning("[记忆模块] 用户 %s 越权删除会话 %s（JSON 降级模式）", user_id, session_id)
+            return False
+        del self._mem_sessions[session_id]
+        self._save_json()
+        return True
 
     # ---------- 消息管理 ----------
     def add_message(self, session_id: str, role: str, content: str, meta: Dict = None):

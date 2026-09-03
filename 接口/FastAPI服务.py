@@ -26,7 +26,7 @@ _libs_dir = Path(__file__).resolve().parent.parent / "libs"
 if _libs_dir.exists():
     sys.path.insert(0, str(_libs_dir))
 
-from fastapi import FastAPI, UploadFile, File, Form, Depends
+from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -188,11 +188,11 @@ def auth_me(user: dict = Depends(get_current_user)):
 
 
 @app.post("/ask")
-def ask(req: AskRequest):
-    """Agent 多任务问答主接口（支持多轮对话记忆）。
+def ask(req: AskRequest, user: dict = Depends(get_current_user)):
+    """Agent 多任务问答主接口（支持多轮对话记忆，会话按用户隔离）。
 
     流程：
-    1. 无 session_id → 新建会话；有 session_id → 复用历史；
+    1. 无 session_id → 新建会话（归属当前用户）；有 session_id → 校验归属后复用历史；
     2. 从记忆模块取出历史，转为 LangChain messages 注入 Agent；
     3. Agent 编排（ReAct + 工具调用 + 幻觉治理）；
     4. 把本轮 user/assistant 消息写回记忆模块持久化。
@@ -200,11 +200,14 @@ def ask(req: AskRequest):
     memory = get_memory()
     agent = get_agent()
 
-    # 会话管理：无 session_id 则新建
+    # 会话管理：无 session_id 则新建（归属当前用户）；传入他人会话则拒绝
     if req.session_id:
+        sess = memory.get_session(req.session_id)
+        if not sess or sess.get("user_id") != user["id"]:
+            return {"error": "会话不存在或无权访问", "session_id": req.session_id}
         session_id = req.session_id
     else:
-        sess = memory.create_session()
+        sess = memory.create_session(user_id=user["id"])
         session_id = sess["id"]
 
     # 取历史上下文（多轮记忆）
@@ -248,32 +251,32 @@ async def chat_upload_image(file: UploadFile = File(...)):
     return {"image_path": image_path, "url": image_path}
 
 
-# ============ 会话管理接口（记忆模块） ============
+# ============ 会话管理接口（记忆模块，按用户隔离） ============
 @app.get("/sessions")
-def list_sessions():
-    """列出所有会话。"""
-    return {"sessions": get_memory().list_sessions()}
+def list_sessions(user: dict = Depends(get_current_user)):
+    """列出当前用户的所有会话。"""
+    return {"sessions": get_memory().list_sessions(user_id=user["id"])}
 
 
 @app.post("/sessions")
-def create_session():
-    """新建会话。"""
-    return get_memory().create_session()
+def create_session(user: dict = Depends(get_current_user)):
+    """新建会话（归属当前用户）。"""
+    return get_memory().create_session(user_id=user["id"])
 
 
 @app.get("/sessions/{session_id}")
-def get_session(session_id: str):
-    """获取会话详情（含消息历史）。"""
+def get_session(session_id: str, user: dict = Depends(get_current_user)):
+    """获取会话详情（含消息历史，验证归属）。"""
     sess = get_memory().get_session(session_id)
-    if not sess:
-        return {"error": "会话不存在"}, 404
+    if not sess or sess.get("user_id") != user["id"]:
+        raise HTTPException(status_code=404, detail="会话不存在")
     return sess
 
 
 @app.delete("/sessions/{session_id}")
-def delete_session(session_id: str):
-    """删除会话。"""
-    ok = get_memory().delete_session(session_id)
+def delete_session(session_id: str, user: dict = Depends(get_current_user)):
+    """删除会话（验证归属）。"""
+    ok = get_memory().delete_session(session_id, user_id=user["id"])
     return {"deleted": ok}
 
 
@@ -406,9 +409,9 @@ async def video_generate(file: UploadFile = File(...), prompt: str = Form("")):
 
 
 @app.get("/video/tasks")
-def video_tasks():
-    """列出所有视频生成任务。"""
-    return {"tasks": list_video_tasks()}
+def video_tasks(user: dict = Depends(get_current_user)):
+    """列出当前用户的视频生成任务。"""
+    return {"tasks": list_video_tasks(user_id=user["id"])}
 
 
 class TextVideoRequest(BaseModel):
@@ -426,18 +429,18 @@ def video_text_to_video(req: TextVideoRequest):
 
 
 @app.get("/video/tasks/{task_id}")
-def video_task_detail(task_id: str):
-    """查询单个视频任务状态。"""
-    t = get_video_task(task_id)
+def video_task_detail(task_id: str, user: dict = Depends(get_current_user)):
+    """查询单个视频任务状态（验证归属）。"""
+    t = get_video_task(task_id, user_id=user["id"])
     if not t:
         return {"error": "任务不存在"}
     return t
 
 
 @app.delete("/video/tasks/{task_id}")
-def video_task_delete(task_id: str):
-    """删除单个视频任务。"""
-    ok = delete_video_task(task_id)
+def video_task_delete(task_id: str, user: dict = Depends(get_current_user)):
+    """删除单个视频任务（验证归属）。"""
+    ok = delete_video_task(task_id, user_id=user["id"])
     return {"deleted": ok, "task_id": task_id}
 
 
@@ -466,24 +469,24 @@ async def image_generate_batch(
 
 
 @app.get("/image/tasks")
-def image_tasks():
-    """列出所有卖点图生成任务。"""
-    return {"tasks": list_image_tasks()}
+def image_tasks(user: dict = Depends(get_current_user)):
+    """列出当前用户的卖点图生成任务。"""
+    return {"tasks": list_image_tasks(user_id=user["id"])}
 
 
 @app.get("/image/tasks/{task_id}")
-def image_task_detail(task_id: str):
-    """查询单个卖点图任务状态。"""
-    t = get_image_task(task_id)
+def image_task_detail(task_id: str, user: dict = Depends(get_current_user)):
+    """查询单个卖点图任务状态（验证归属）。"""
+    t = get_image_task(task_id, user_id=user["id"])
     if not t:
         return {"error": "任务不存在"}
     return t
 
 
 @app.delete("/image/tasks/{task_id}")
-def image_task_delete(task_id: str):
-    """删除单个卖点图任务。"""
-    ok = delete_image_task(task_id)
+def image_task_delete(task_id: str, user: dict = Depends(get_current_user)):
+    """删除单个卖点图任务（验证归属）。"""
+    ok = delete_image_task(task_id, user_id=user["id"])
     return {"deleted": ok, "task_id": task_id}
 
 
@@ -507,20 +510,23 @@ class SupportTransferRequest(BaseModel):
 
 
 @app.post("/support/ask")
-def support_ask(req: SupportRequest):
+def support_ask(req: SupportRequest, user: dict = Depends(get_current_user)):
     """智能客服统一入口：买家接待 / 卖家话术生成，复用记忆模块做多轮会话。
 
-    客服会话复用与主对话同一套记忆存储（会话隔离由前端页面管理）。
+    客服会话复用与主对话同一套记忆存储（会话按用户隔离）。
     """
     from 模块.智能客服 import buyer_reply, seller_reply
 
     memory = get_memory()
 
-    # 会话管理：无 session_id 则新建（与主对话同一套会话体系）
+    # 会话管理：无 session_id 则新建（归属当前用户）；传入他人会话则拒绝
     if req.session_id:
+        sess = memory.get_session(req.session_id)
+        if not sess or sess.get("user_id") != user["id"]:
+            return {"error": "会话不存在或无权访问", "session_id": req.session_id}
         sid = req.session_id
     else:
-        sid = memory.create_session(title="客服会话")["id"]
+        sid = memory.create_session(title="客服会话", user_id=user["id"])["id"]
 
     # 取历史（不含本轮），写回本轮用户消息后再生成
     history = memory.get_history(sid, max_turns=10)
@@ -556,11 +562,15 @@ def support_review(req: SupportReviewRequest):
 
 
 @app.post("/support/transfer")
-def support_transfer(req: SupportTransferRequest):
-    """转人工：基于本次会话生成交接摘要，说明转人工后由坐席跟进。"""
+def support_transfer(req: SupportTransferRequest, user: dict = Depends(get_current_user)):
+    """转人工：基于本次会话生成交接摘要，说明转人工后由坐席跟进（验证会话归属）。"""
     from 模块.智能客服 import build_transfer_summary
 
     sid = req.session_id if req.session_id else ""
+    if sid:
+        sess = get_memory().get_session(sid)
+        if not sess or sess.get("user_id") != user["id"]:
+            return {"ok": False, "error": "会话不存在或无权访问"}
     history = get_memory().get_history(sid, max_turns=10) if sid else []
     summary = build_transfer_summary(history)
     return {
@@ -572,18 +582,18 @@ def support_transfer(req: SupportTransferRequest):
 
 
 @app.get("/support/sessions/{session_id}")
-def support_session(session_id: str):
-    """获取客服会话详情（含历史消息）。"""
+def support_session(session_id: str, user: dict = Depends(get_current_user)):
+    """获取客服会话详情（含历史消息，验证归属）。"""
     sess = get_memory().get_session(session_id)
-    if not sess:
+    if not sess or sess.get("user_id") != user["id"]:
         return {"error": "会话不存在"}
     return sess
 
 
 @app.delete("/support/sessions/{session_id}")
-def support_session_delete(session_id: str):
-    """删除客服会话。"""
-    ok = get_memory().delete_session(session_id)
+def support_session_delete(session_id: str, user: dict = Depends(get_current_user)):
+    """删除客服会话（验证归属）。"""
+    ok = get_memory().delete_session(session_id, user_id=user["id"])
     return {"deleted": ok, "session_id": session_id}
 
 

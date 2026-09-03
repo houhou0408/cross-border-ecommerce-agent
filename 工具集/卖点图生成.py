@@ -21,6 +21,7 @@ import requests
 
 from config import LOG_DIR, IMAGE_T2I_CONFIG, IMAGE_TEMPLATES, _SCENE_MAP
 from 工具集.视频生成 import _save_upload_image, UPLOAD_DIR
+from 工具集.数据库连接 import get_cursor
 from 模块.日志统计 import get_file_logger
 logger = get_file_logger("卖点图生成")
 
@@ -50,10 +51,14 @@ _MODEL = IMAGE_T2I_CONFIG.get("model", "wanx2.1-t2i-turbo")
 # ============ 任务记录管理 ============
 
 def _create_task_record(product: str, features: str, image_url: str) -> Dict[str, Any]:
-    """创建卖点图生成任务记录。"""
+    """创建卖点图生成任务记录（自动从请求上下文取当前用户，做数据归属）。"""
+    from 工具集.用户认证 import get_current_user_ctx
+    user = get_current_user_ctx() or {}
     task_id = uuid.uuid4().hex[:12]
     task = {
         "id": task_id,
+        "user_id": user.get("id"),
+        "username": user.get("username", ""),
         "product": product,
         "features": features,
         "image_url": image_url,  # 用户上传的商品原图
@@ -67,8 +72,92 @@ def _create_task_record(product: str, features: str, image_url: str) -> Dict[str
     return task
 
 
+# ============ 任务持久化：MySQL 优先，JSON 文件降级 ============
+
+_TABLES_ENSURED = False
+
+
+def _ensure_tables():
+    """懒建 image_task 表（首次写任务时执行一次；建表失败静默走 JSON 降级）。"""
+    global _TABLES_ENSURED
+    if _TABLES_ENSURED:
+        return
+    with get_cursor() as cur:
+        if cur is not None:
+            try:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS image_task (
+                        id VARCHAR(12) PRIMARY KEY,
+                        user_id VARCHAR(32) NULL,
+                        username VARCHAR(100),
+                        product VARCHAR(500),
+                        features TEXT,
+                        image_url VARCHAR(500),
+                        status VARCHAR(20),
+                        images MEDIUMTEXT,
+                        used_fallback TINYINT,
+                        created_at VARCHAR(32),
+                        completed_at VARCHAR(32),
+                        INDEX idx_image_user (user_id)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                    """
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[卖点图] 建表失败，任务将走 JSON 降级: %s", e)
+    _TABLES_ENSURED = True
+
+
+def _row_to_task(row: Dict) -> Dict:
+    """DB 行 → 任务 dict（images 列存 JSON 字符串，反序列化）。"""
+    try:
+        images = json.loads(row.get("images") or "{}")
+    except Exception:
+        images = {}
+    return {
+        "id": row["id"],
+        "user_id": row.get("user_id"),
+        "username": row.get("username", ""),
+        "product": row.get("product", ""),
+        "features": row.get("features", ""),
+        "image_url": row.get("image_url", ""),
+        "status": row.get("status", ""),
+        "images": images,
+        "used_fallback": bool(row.get("used_fallback", 0)),
+        "created_at": str(row.get("created_at", "")),
+        "completed_at": str(row.get("completed_at", "")),
+    }
+
+
+def _task_to_row(task: Dict) -> tuple:
+    """任务 dict → DB 行（列序与 INSERT 语句一致）。"""
+    return (
+        task["id"], task.get("user_id"), task.get("username", ""),
+        task.get("product", ""), task.get("features", ""), task.get("image_url", ""),
+        task.get("status", ""), json.dumps(task.get("images", {}), ensure_ascii=False),
+        1 if task.get("used_fallback") else 0,
+        task.get("created_at", ""), task.get("completed_at", ""),
+    )
+
+
 def _save_task(task: Dict):
-    """保存任务到 JSON 文件。"""
+    """保存任务：MySQL upsert 优先，无库/失败时降级 JSON 文件。"""
+    _ensure_tables()
+    with get_cursor() as cur:
+        if cur is not None:
+            try:
+                cur.execute(
+                    "INSERT INTO image_task (id, user_id, username, product, features, image_url, "
+                    "status, images, used_fallback, created_at, completed_at) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                    "ON DUPLICATE KEY UPDATE status=VALUES(status), images=VALUES(images), "
+                    "used_fallback=VALUES(used_fallback), completed_at=VALUES(completed_at)",
+                    _task_to_row(task),
+                )
+                return
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[卖点图] 任务入库失败，降级 JSON 文件: %s", e)
+    # JSON 降级
     tasks = _load_tasks()
     tasks[task["id"]] = task
     try:
@@ -79,7 +168,14 @@ def _save_task(task: Dict):
 
 
 def _load_tasks() -> Dict[str, Dict]:
-    """加载所有任务。"""
+    """加载所有任务：DB 优先，降级 JSON 文件。"""
+    with get_cursor() as cur:
+        if cur is not None:
+            try:
+                cur.execute("SELECT * FROM image_task")
+                return {r["id"]: _row_to_task(r) for r in cur.fetchall()}
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[卖点图] 任务读取降级 JSON 文件: %s", e)
     if _IMAGE_TASK_DIR.exists():
         try:
             with open(_IMAGE_TASK_DIR, "r", encoding="utf-8") as f:
@@ -410,28 +506,59 @@ def generate_selling_images(
     }
 
 
-def list_image_tasks() -> list:
-    """列出所有卖点图生成任务（按时间倒序）。"""
+def list_image_tasks(user_id: str = None) -> list:
+    """列出卖点图生成任务（按时间倒序）。
+
+    Args:
+        user_id: 非空时只返回该用户的任务（数据隔离）；None 返回全部（内部/遗留兼容）。
+    """
     tasks = _load_tasks()
+    if user_id is not None:
+        tasks = {k: v for k, v in tasks.items() if v.get("user_id") == user_id}
     return sorted(tasks.values(), key=lambda t: t.get("created_at", ""), reverse=True)
 
 
-def get_image_task(task_id: str) -> Optional[Dict]:
-    """查询单个任务。"""
-    return _load_tasks().get(task_id)
+def get_image_task(task_id: str, user_id: str = None) -> Optional[Dict]:
+    """查询单个任务。user_id 非空时校验归属，非本人任务返回 None。"""
+    task = _load_tasks().get(task_id)
+    if task is None:
+        return None
+    if user_id is not None and task.get("user_id") != user_id:
+        return None
+    return task
 
 
-def delete_image_task(task_id: str) -> bool:
-    """删除单个卖点图任务。"""
+def delete_image_task(task_id: str, user_id: str = None) -> bool:
+    """删除单个卖点图任务（user_id 非空时校验归属，防越权删除）。"""
+    with get_cursor() as cur:
+        if cur is not None:
+            if user_id is not None:
+                cur.execute("SELECT user_id FROM image_task WHERE id=%s", (task_id,))
+                row = cur.fetchone()
+                if not row or row.get("user_id") != user_id:
+                    logger.warning("[卖点图] 用户 %s 越权删除任务 %s", user_id, task_id)
+                    return False
+            try:
+                cur.execute("DELETE FROM image_task WHERE id=%s", (task_id,))
+                return True
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[卖点图] 删除任务失败（DB）: %s", e)
+                return False
+    # JSON 降级
     tasks = _load_tasks()
-    if task_id in tasks:
-        del tasks[task_id]
-        try:
-            with open(_IMAGE_TASK_DIR, "w", encoding="utf-8") as f:
-                json.dump(tasks, f, ensure_ascii=False, indent=2)
-            return True
-        except Exception as e:
-            logger.error("[卖点图] 删除任务失败: %s", e)
+    task = tasks.get(task_id)
+    if not task:
+        return False
+    if user_id is not None and task.get("user_id") != user_id:
+        logger.warning("[卖点图] 用户 %s 越权删除任务 %s（JSON 降级模式）", user_id, task_id)
+        return False
+    del tasks[task_id]
+    try:
+        with open(_IMAGE_TASK_DIR, "w", encoding="utf-8") as f:
+            json.dump(tasks, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        logger.error("[卖点图] 删除任务失败: %s", e)
     return False
 
 

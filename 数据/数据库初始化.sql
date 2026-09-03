@@ -59,6 +59,65 @@ CREATE TABLE IF NOT EXISTS tariff_rule (
   UNIQUE KEY uniq_country_cat (country, category)
 ) ENGINE=InnoDB COMMENT='关税规则';
 
+-- 5. 会话表：多轮对话历史（user_id 实现按用户隔离）
+CREATE TABLE IF NOT EXISTS chat_session (
+  id          VARCHAR(32)  PRIMARY KEY COMMENT '会话ID',
+  title       VARCHAR(255) NOT NULL DEFAULT '新对话',
+  user_id     VARCHAR(32)  NULL COMMENT '归属用户ID；NULL为遗留数据，列表不返回',
+  created_at  DATETIME     NOT NULL,
+  updated_at  DATETIME     NOT NULL,
+  INDEX idx_session_user (user_id),
+  INDEX idx_updated (updated_at)
+) ENGINE=InnoDB COMMENT='对话会话（记忆模块）';
+
+-- 6. 会话消息表
+CREATE TABLE IF NOT EXISTS chat_message (
+  id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+  session_id  VARCHAR(32)  NOT NULL,
+  role        VARCHAR(16)  NOT NULL COMMENT 'user/assistant',
+  content     MEDIUMTEXT   NOT NULL,
+  meta        MEDIUMTEXT   NULL COMMENT '工具链/评分等元数据(JSON)',
+  created_at  DATETIME     NOT NULL,
+  INDEX idx_msg_session (session_id)
+) ENGINE=InnoDB COMMENT='会话消息（记忆模块）';
+
+-- 7. 视频生成任务表（user_id 归属，MySQL 优先 / JSON 文件降级）
+CREATE TABLE IF NOT EXISTS video_task (
+  id           VARCHAR(12) PRIMARY KEY,
+  user_id      VARCHAR(32)  NULL,
+  username     VARCHAR(100),
+  prompt       TEXT,
+  image_url    VARCHAR(500),
+  mode         VARCHAR(10)  COMMENT 'i2v/r2v/t2v',
+  status       VARCHAR(20)  COMMENT 'processing/completed',
+  video_url    VARCHAR(1000),
+  used_fallback TINYINT,
+  created_at   VARCHAR(32),
+  completed_at VARCHAR(32),
+  INDEX idx_video_user (user_id)
+) ENGINE=InnoDB COMMENT='视频生成任务';
+
+-- 8. 卖点图生成任务表（images 列存 JSON：{type: {name,url,fallback}}）
+CREATE TABLE IF NOT EXISTS image_task (
+  id           VARCHAR(12) PRIMARY KEY,
+  user_id      VARCHAR(32)  NULL,
+  username     VARCHAR(100),
+  product      VARCHAR(500),
+  features     TEXT,
+  image_url    VARCHAR(500),
+  status       VARCHAR(20),
+  images       MEDIUMTEXT,
+  used_fallback TINYINT,
+  created_at   VARCHAR(32),
+  completed_at VARCHAR(32),
+  INDEX idx_image_user (user_id)
+) ENGINE=InnoDB COMMENT='卖点图生成任务';
+
+-- ===== 存量库迁移（已有旧表时执行；列已存在会报 1060，可忽略）=====
+-- ALTER TABLE chat_session ADD COLUMN user_id VARCHAR(32) NULL, ADD INDEX idx_session_user (user_id);
+-- 存量无主会话回填给管理员（按需执行）：
+-- UPDATE chat_session SET user_id = 'admin-user-id' WHERE user_id IS NULL;
+
 -- ===== 预置示例数据（演示用）=====
 INSERT INTO exchange_rate (from_currency, to_currency, rate, source)
 VALUES

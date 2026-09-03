@@ -54,10 +54,14 @@ def _save_upload_image(file_bytes: bytes, filename: str) -> str:
 
 
 def _create_task_record(prompt: str, image_url: str, status: str = "processing") -> Dict[str, Any]:
-    """创建视频生成任务记录。"""
+    """创建视频生成任务记录（自动从请求上下文取当前用户，做数据归属）。"""
+    from 工具集.用户认证 import get_current_user_ctx
+    user = get_current_user_ctx() or {}
     task_id = uuid.uuid4().hex[:12]
     task = {
         "id": task_id,
+        "user_id": user.get("id"),
+        "username": user.get("username", ""),
         "prompt": prompt,
         "image_url": image_url,
         "status": status,
@@ -70,8 +74,88 @@ def _create_task_record(prompt: str, image_url: str, status: str = "processing")
     return task
 
 
+# ============ 任务持久化：MySQL 优先，JSON 文件降级 ============
+
+_TABLES_ENSURED = False
+
+
+def _ensure_tables():
+    """懒建 video_task 表（首次写任务时执行一次；建表失败静默走 JSON 降级）。"""
+    global _TABLES_ENSURED
+    if _TABLES_ENSURED:
+        return
+    with get_cursor() as cur:
+        if cur is not None:
+            try:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS video_task (
+                        id VARCHAR(12) PRIMARY KEY,
+                        user_id VARCHAR(32) NULL,
+                        username VARCHAR(100),
+                        prompt TEXT,
+                        image_url VARCHAR(500),
+                        mode VARCHAR(10),
+                        status VARCHAR(20),
+                        video_url VARCHAR(1000),
+                        used_fallback TINYINT,
+                        created_at VARCHAR(32),
+                        completed_at VARCHAR(32),
+                        INDEX idx_video_user (user_id)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                    """
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[视频生成] 建表失败，任务将走 JSON 降级: %s", e)
+    _TABLES_ENSURED = True
+
+
+def _row_to_task(row: Dict) -> Dict:
+    """DB 行 → 任务 dict。"""
+    return {
+        "id": row["id"],
+        "user_id": row.get("user_id"),
+        "username": row.get("username", ""),
+        "prompt": row.get("prompt", ""),
+        "image_url": row.get("image_url", ""),
+        "mode": row.get("mode", ""),
+        "status": row.get("status", ""),
+        "video_url": row.get("video_url", ""),
+        "used_fallback": bool(row.get("used_fallback", 0)),
+        "created_at": str(row.get("created_at", "")),
+        "completed_at": str(row.get("completed_at", "")),
+    }
+
+
+def _task_to_row(task: Dict) -> tuple:
+    """任务 dict → DB 行（列序与 INSERT 语句一致）。"""
+    return (
+        task["id"], task.get("user_id"), task.get("username", ""),
+        task.get("prompt", ""), task.get("image_url", ""), task.get("mode", ""),
+        task.get("status", ""), task.get("video_url", ""),
+        1 if task.get("used_fallback") else 0,
+        task.get("created_at", ""), task.get("completed_at", ""),
+    )
+
+
 def _save_task(task: Dict):
-    """保存任务到 JSON 文件（简化持久化）。"""
+    """保存任务：MySQL upsert 优先，无库/失败时降级 JSON 文件。"""
+    _ensure_tables()
+    with get_cursor() as cur:
+        if cur is not None:
+            try:
+                cur.execute(
+                    "INSERT INTO video_task (id, user_id, username, prompt, image_url, mode, "
+                    "status, video_url, used_fallback, created_at, completed_at) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                    "ON DUPLICATE KEY UPDATE status=VALUES(status), video_url=VALUES(video_url), "
+                    "used_fallback=VALUES(used_fallback), completed_at=VALUES(completed_at)",
+                    _task_to_row(task),
+                )
+                return
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[视频生成] 任务入库失败，降级 JSON 文件: %s", e)
+    # JSON 降级
     tasks = _load_tasks()
     tasks[task["id"]] = task
     try:
@@ -82,7 +166,14 @@ def _save_task(task: Dict):
 
 
 def _load_tasks() -> Dict[str, Dict]:
-    """加载所有任务。"""
+    """加载所有任务：DB 优先，降级 JSON 文件。"""
+    with get_cursor() as cur:
+        if cur is not None:
+            try:
+                cur.execute("SELECT * FROM video_task")
+                return {r["id"]: _row_to_task(r) for r in cur.fetchall()}
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[视频生成] 任务读取降级 JSON 文件: %s", e)
     if _TASK_DIR.exists():
         try:
             with open(_TASK_DIR, "r", encoding="utf-8") as f:
@@ -426,28 +517,59 @@ def generate_video_task(prompt: str, image_path: str = "", image_bytes: bytes = 
     }
 
 
-def list_video_tasks() -> list:
-    """列出所有视频生成任务（按时间倒序）。"""
+def list_video_tasks(user_id: str = None) -> list:
+    """列出视频生成任务（按时间倒序）。
+
+    Args:
+        user_id: 非空时只返回该用户的任务（数据隔离）；None 返回全部（内部/遗留兼容）。
+    """
     tasks = _load_tasks()
+    if user_id is not None:
+        tasks = {k: v for k, v in tasks.items() if v.get("user_id") == user_id}
     return sorted(tasks.values(), key=lambda t: t.get("created_at", ""), reverse=True)
 
 
-def get_video_task(task_id: str) -> Optional[Dict]:
-    """查询单个任务。"""
-    return _load_tasks().get(task_id)
+def get_video_task(task_id: str, user_id: str = None) -> Optional[Dict]:
+    """查询单个任务。user_id 非空时校验归属，非本人任务返回 None。"""
+    task = _load_tasks().get(task_id)
+    if task is None:
+        return None
+    if user_id is not None and task.get("user_id") != user_id:
+        return None
+    return task
 
 
-def delete_video_task(task_id: str) -> bool:
-    """删除单个视频任务。"""
+def delete_video_task(task_id: str, user_id: str = None) -> bool:
+    """删除单个视频任务（user_id 非空时校验归属，防越权删除）。"""
+    with get_cursor() as cur:
+        if cur is not None:
+            if user_id is not None:
+                cur.execute("SELECT user_id FROM video_task WHERE id=%s", (task_id,))
+                row = cur.fetchone()
+                if not row or row.get("user_id") != user_id:
+                    logger.warning("[视频生成] 用户 %s 越权删除任务 %s", user_id, task_id)
+                    return False
+            try:
+                cur.execute("DELETE FROM video_task WHERE id=%s", (task_id,))
+                return True
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[视频生成] 删除任务失败（DB）: %s", e)
+                return False
+    # JSON 降级
     tasks = _load_tasks()
-    if task_id in tasks:
-        del tasks[task_id]
-        try:
-            with open(_TASK_DIR, "w", encoding="utf-8") as f:
-                json.dump(tasks, f, ensure_ascii=False, indent=2)
-            return True
-        except Exception as e:
-            logger.error("[视频生成] 删除任务失败: %s", e)
+    task = tasks.get(task_id)
+    if not task:
+        return False
+    if user_id is not None and task.get("user_id") != user_id:
+        logger.warning("[视频生成] 用户 %s 越权删除任务 %s（JSON 降级模式）", user_id, task_id)
+        return False
+    del tasks[task_id]
+    try:
+        with open(_TASK_DIR, "w", encoding="utf-8") as f:
+            json.dump(tasks, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        logger.error("[视频生成] 删除任务失败: %s", e)
     return False
 
 
