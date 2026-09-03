@@ -80,6 +80,19 @@ export default function App() {
       .finally(() => setAuthChecked(true))
   }, [])
 
+  // 任意接口返回 401（token 过期/失效）→ api.js 已清 token 并广播，
+  // 此处回到登录页（已有的 if (!user) 门控自动展示 LoginPage）
+  useEffect(() => {
+    const onAuthExpired = () => {
+      setUser(null)
+      setActive('chat')
+      setSessions([])
+      setActiveSessionId(null)
+    }
+    window.addEventListener('auth:expired', onAuthExpired)
+    return () => window.removeEventListener('auth:expired', onAuthExpired)
+  }, [])
+
   // 退出登录
   const onLogout = useCallback(async () => {
     try {

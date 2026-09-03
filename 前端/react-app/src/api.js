@@ -1,4 +1,5 @@
 // API 调用封装：所有后端接口集中管理
+// 统一 request()：注入 Authorization、超时控制、401 全局拦截
 const BASE = ''
 
 // token 管理：localStorage 存储
@@ -16,54 +17,55 @@ function authHeaders(extra = {}) {
   return h
 }
 
-async function postJSON(path, body, timeout = 120000) {
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), timeout)
+// 统一请求入口：
+// - 自动注入 Authorization 头
+// - timeout 毫秒超时（外部传入 signal 时以 signal 为准）
+// - 401 → 清除本地 token 并广播 auth:expired 事件，App 监听后回到登录页
+async function request(path, { method = 'GET', body, isForm = false, timeout = 15000, signal } = {}) {
+  let ctrl = null
+  let timer = null
+  if (signal == null && timeout > 0) {
+    ctrl = new AbortController()
+    timer = setTimeout(() => ctrl.abort(), timeout)
+  }
   try {
+    const headers = isForm
+      ? authHeaders()
+      : authHeaders(body !== undefined ? { 'Content-Type': 'application/json' } : {})
     const r = await fetch(BASE + path, {
-      method: 'POST',
-      headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify(body),
-      signal: ctrl.signal
+      method,
+      headers,
+      body: isForm ? body : (body !== undefined ? JSON.stringify(body) : undefined),
+      signal: signal != null ? signal : (ctrl ? ctrl.signal : undefined)
     })
+    if (r.status === 401) {
+      // 登录态失效（token 过期/被顶掉/未登录）：清 token + 广播，绝不静默吞掉
+      tokenStore.clear()
+      window.dispatchEvent(new CustomEvent('auth:expired', { detail: { path } }))
+      return { error: '登录已过期，请重新登录', auth_expired: true }
+    }
     return await r.json()
   } finally {
-    clearTimeout(timer)
+    if (timer) clearTimeout(timer)
   }
 }
 
-async function getJSON(path, timeout = 15000) {
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), timeout)
-  try {
-    const r = await fetch(BASE + path, { headers: authHeaders(), signal: ctrl.signal })
-    return await r.json()
-  } finally {
-    clearTimeout(timer)
-  }
+// 薄封装：保持原有函数签名，页面零改动
+function postJSON(path, body, timeout = 120000) {
+  return request(path, { method: 'POST', body, timeout })
 }
 
-async function deleteJSON(path, timeout = 15000) {
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), timeout)
-  try {
-    const r = await fetch(BASE + path, { method: 'DELETE', headers: authHeaders(), signal: ctrl.signal })
-    return await r.json()
-  } finally {
-    clearTimeout(timer)
-  }
+function getJSON(path, timeout = 15000) {
+  return request(path, { method: 'GET', timeout })
+}
+
+function deleteJSON(path, timeout = 15000) {
+  return request(path, { method: 'DELETE', timeout })
 }
 
 // 带 Authorization 的 FormData 上传
-async function postForm(path, fd, timeout = 120000) {
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), timeout)
-  try {
-    const r = await fetch(BASE + path, { method: 'POST', headers: authHeaders(), body: fd, signal: ctrl.signal })
-    return await r.json()
-  } finally {
-    clearTimeout(timer)
-  }
+function postForm(path, fd, timeout = 120000) {
+  return request(path, { method: 'POST', body: fd, isForm: true, timeout })
 }
 
 export const api = {
@@ -77,12 +79,8 @@ export const api = {
   ask: (query, sessionId, signal, imagePath = null) => {
     const body = { query, session_id: sessionId || null }
     if (imagePath) body.image_path = imagePath
-    return fetch('/ask', {
-      method: 'POST',
-      headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify(body),
-      signal
-    }).then((r) => r.json())
+    // 外部 signal 用于用户手动停止生成，不设超时
+    return request('/ask', { method: 'POST', body, timeout: 0, signal })
   },
   // 对话页上传商品图片，返回 image_path
   uploadChatImage: (file) => {

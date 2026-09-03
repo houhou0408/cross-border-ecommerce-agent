@@ -230,3 +230,77 @@ async def get_current_user_optional(
     if credentials is None or not credentials.credentials:
         return None
     return get_user_by_token(credentials.credentials)
+
+
+# ============ 全局强制鉴权（FastAPI 全局依赖） ============
+
+# 无需登录即可访问的精确路径
+_PUBLIC_PATHS = {
+    "/",                # 前端页面
+    "/health",          # 健康检查（监控/容器探针）
+    "/favicon.ico",
+    "/auth/login",      # 登录/注册本身
+    "/auth/register",
+    "/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect",  # API 文档
+}
+
+# 无需登录的前缀（静态资源；StaticFiles Mount 天然不走全局依赖，此处兜底）
+_PUBLIC_PREFIXES = ("/assets/", "/uploads/", "/videos/", "/images/")
+
+# 请求级用户上下文：Agent 工具链深处取当前用户，不污染 @tool 函数签名
+from contextvars import ContextVar
+
+_current_user_ctx: ContextVar[Optional[Dict[str, Any]]] = ContextVar("current_user", default=None)
+
+
+def set_current_user(user: Optional[Dict[str, Any]]):
+    """写入当前请求的用户上下文（require_user 已自动调用）。"""
+    _current_user_ctx.set(user)
+
+
+def get_current_user_ctx() -> Optional[Dict[str, Any]]:
+    """读取当前请求的用户上下文（Agent 工具链/任务归属用）。
+
+    返回 {"id": ..., "username": ..., "token": ...} 或 None（未登录/白名单路径）。
+    """
+    return _current_user_ctx.get()
+
+
+def _normalize_path(path: str) -> str:
+    """路径归一：去掉尾部斜杠（/ask/ 与 /ask 同等对待），保留根路径。"""
+    if path != "/" and path.endswith("/"):
+        return path.rstrip("/")
+    return path
+
+
+async def require_user(request: Request, credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
+    """全局鉴权依赖：白名单放行，其余路由强制 Bearer token。
+
+    用法（覆盖全部路由，一行接入）:
+        app = FastAPI(..., dependencies=[Depends(require_user)])
+
+    - 白名单路径/前缀 → 直接放行（返回 None，不设置用户上下文）；
+    - 未带 token / token 无效或过期 → 401（带 WWW-Authenticate 头，前端据此跳登录页）；
+    - 验证通过 → 写入 ContextVar 用户上下文并返回用户。
+    - 静态 Mount（/uploads 等）不走 FastAPI 依赖体系，天然公开，无需处理。
+    """
+    path = _normalize_path(request.url.path)
+    if path in _PUBLIC_PATHS or path.startswith(_PUBLIC_PREFIXES):
+        set_current_user(None)
+        return None
+
+    if credentials is None or not credentials.credentials:
+        raise HTTPException(
+            status_code=401,
+            detail="未提供认证 token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    user = get_user_by_token(credentials.credentials)
+    if user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="token 无效或已过期",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    set_current_user(user)
+    return user

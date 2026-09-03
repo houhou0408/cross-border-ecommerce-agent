@@ -41,9 +41,11 @@ from 工具集.汇率转换 import 汇率换算
 from 工具集.Listing生成 import 生成产品Listing
 from 工具集.视频生成 import generate_video_task, generate_text_video_task, list_video_tasks, get_video_task, delete_video_task
 from 工具集.卖点图生成 import generate_selling_images, list_image_tasks, get_image_task, delete_image_task
-from 工具集.用户认证 import register, login, logout, get_user_by_token, get_current_user
+from 工具集.用户认证 import register, login, logout, get_user_by_token, get_current_user, require_user
 
-app = FastAPI(title="跨境电商 AI Agent", version="1.0.0")
+# 全局强制鉴权：白名单（前端页/健康检查/登录注册/文档/静态资源）放行，
+# 其余全部路由必须携带有效 Bearer token（详见 用户认证.require_user）
+app = FastAPI(title="跨境电商 AI Agent", version="1.0.0", dependencies=[Depends(require_user)])
 
 # 前端目录：优先用 React 构建产物（前端/dist），未构建时回退到原 index.html
 _FRONTEND_ROOT = Path(__file__).resolve().parent.parent / "前端"
