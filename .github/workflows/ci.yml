@@ -1,0 +1,64 @@
+# ===== 跨境电商 AI Agent 持续集成 =====
+# 触发：push 到 main/master、任意 PR
+# 阶段：单测（pytest 全量，无 MySQL/外网依赖）→ Docker 镜像构建验证
+#
+# 设计说明（面试讲解重点）：
+# 1. 测试矩阵极简：单测全量 mock 外部依赖（MySQL/LLM/网络），CI 无需任何 Secret；
+# 2. torch 先装 CPU 版再装 requirements，避免 Linux 默认拉取 ~2GB CUDA 依赖；
+# 3. Docker 构建用 GHA 缓存（cache-from/to type=gha），只验证可构建不推送，
+#    推送到镜像仓库需自行配置 registry secret 后开启 push 分支；
+# 4. mysql 标记的集成测试默认跳过（-m "not mysql"），本地连库后再跑。
+
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    name: 单元测试
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: 运行测试
+        env:
+          # embedding 模型走国内镜像（仅影响可能的按需下载，单测不触发）
+          HF_ENDPOINT: https://hf-mirror.com
+          # 占位 Key：单测不外呼，仅避免配置加载告警
+          LLM_API_KEY: sk-ci-dummy
+          PYTHONUTF8: "1"
+        run: pytest -q -m "not mysql" --cov=模块 --cov=工具集 --cov=接口 --cov-report=term-missing
+
+  docker:
+    name: Docker 构建验证
+    runs-on: ubuntu-latest
+    needs: test
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: 构建镜像（不推送）
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: cross-border-agent:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

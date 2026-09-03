@@ -1,0 +1,47 @@
+# ===== Docker 构建上下文排除（加速构建 + 防敏感文件进镜像）=====
+# 注意：Dockerfile 按目录白名单 COPY，.dockerignore 主要减小上下文体积
+
+# 敏感配置（密钥经 env_file/compose 注入，不打进镜像）
+.env
+.env.local
+.env.*.local
+.env.docker
+*.key
+*.pem
+credentials.json
+
+# Git / CI
+.git/
+.github/
+
+# Python 缓存与虚拟环境
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# 本地 vendored 包（镜像内用 pip 安装）
+libs/
+
+# 本地数据 / 向量库 / 日志（容器内用卷挂载）
+向量库存储/
+日志/
+*.log
+数据/tokens.json
+数据/users.json
+
+# 用户上传素材（容器内用卷挂载）
+静态资源/uploads/
+静态资源/videos/
+静态资源/images/
+
+# 前端构建缓存（CI 内多阶段构建自己 npm install）
+前端/react-app/node_modules/
+前端/react-app/dist/
+前端/dist/
+
+# IDE / 系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

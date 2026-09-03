@@ -18,6 +18,12 @@ __pycache__/
 dist/
 build/
 
+# ===== 测试产物 =====
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
 # ===== 第三方库（体积大，用 pip 安装即可）=====
 libs/
 
