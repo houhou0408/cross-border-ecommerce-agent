@@ -14,6 +14,9 @@ import json
 import re
 from typing import Dict, Any, Optional, List
 
+from 模块.日志统计 import get_file_logger
+logger = get_file_logger("Proboost")
+
 # Proboost MCP 配置（优先环境变量）
 _MCP_URL = os.getenv("PROBOOST_MCP_URL",
     "http://f9038a3cf3c84ecdb5e3107976b9ef84.mcp.market.alicloudapi.com/mcp-servers/ea98b07bb83c48e886549c28292388b8/mcp-servers/proboost-amazon-mcp/sse")
@@ -192,10 +195,10 @@ def fetch_proboost_competitors(keyword: str, market: str = "美国", page_size: 
     try:
         result = _run_async(_fetch())
         if result:
-            print(f"[数据采集] Proboost 采集成功 (keyword={keyword}, market={market}, 共 {len(result['竞品列表'])} 个竞品)")
+            logger.info("[数据采集] Proboost 采集成功 (keyword=%s, market=%s, 共 %s 个竞品)", keyword, market, len(result['竞品列表']))
         return result
     except Exception as e:
-        print(f"[数据采集] Proboost MCP 异常: {e}")
+        logger.warning("[数据采集] Proboost MCP 异常: %s", e)
         return None
 
 
@@ -240,8 +243,8 @@ def fetch_proboost_reviews(asin: str, site: str = "US", max_reviews: int = 5) ->
     try:
         result = _run_async(_fetch())
         if result:
-            print(f"[数据采集] Proboost 评论采集成功 (asin={asin}, {len(result['reviews'])}条)")
+            logger.info("[数据采集] Proboost 评论采集成功 (asin=%s, %s条)", asin, len(result['reviews']))
         return result
     except Exception as e:
-        print(f"[数据采集] Proboost 评论采集异常: {e}")
+        logger.warning("[数据采集] Proboost 评论采集异常: %s", e)
         return None

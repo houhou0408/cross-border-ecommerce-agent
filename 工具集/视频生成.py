@@ -20,6 +20,8 @@ import requests
 
 from config import LOG_DIR, VIDEO_CONFIG, VIDEO_T2V_CONFIG
 from 工具集.数据库连接 import get_cursor
+from 模块.日志统计 import get_file_logger
+logger = get_file_logger("视频生成")
 
 # 视频生成任务存储
 _TASK_DIR = LOG_DIR / "video_tasks.json"
@@ -76,7 +78,7 @@ def _save_task(task: Dict):
         with open(_TASK_DIR, "w", encoding="utf-8") as f:
             json.dump(tasks, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"[视频生成] 任务保存失败: {e}")
+        logger.error("[视频生成] 任务保存失败: %s", e)
 
 
 def _load_tasks() -> Dict[str, Dict]:
@@ -106,7 +108,7 @@ def _upload_image_to_dashscope(image_path: str) -> Optional[str]:
         local_path = Path(image_path)
 
     if not local_path.exists():
-        print(f"[视频生成] 图片不存在: {local_path}")
+        logger.warning("[视频生成] 图片不存在: %s", local_path)
         return None
 
     try:
@@ -116,10 +118,10 @@ def _upload_image_to_dashscope(image_path: str) -> Optional[str]:
             file_path=str(local_path),
             api_key=_API_KEY,
         )
-        print(f"[视频生成] 图片上传成功: {oss_url}")
+        logger.info("[视频生成] 图片上传成功: %s", oss_url)
         return oss_url
     except Exception as e:
-        print(f"[视频生成] OSS 上传异常: {e}")
+        logger.warning("[视频生成] OSS 上传异常: %s", e)
     return None
 
 
@@ -164,13 +166,13 @@ def _create_r2v_task(prompt: str, image_url: str) -> Optional[str]:
             result = r.json()
             task_id = result.get("output", {}).get("task_id")
             if task_id:
-                print(f"[视频生成] 任务创建成功: {task_id}")
+                logger.info("[视频生成] 任务创建成功: %s", task_id)
                 return task_id
-            print(f"[视频生成] 任务创建返回无 task_id: {result}")
+            logger.warning("[视频生成] 任务创建返回无 task_id: %s", result)
         else:
-            print(f"[视频生成] 任务创建失败 HTTP {r.status_code}: {r.text[:300]}")
+            logger.warning("[视频生成] 任务创建失败 HTTP %s: %s", r.status_code, r.text[:300])
     except Exception as e:
-        print(f"[视频生成] 任务创建异常: {e}")
+        logger.warning("[视频生成] 任务创建异常: %s", e)
     return None
 
 
@@ -192,7 +194,7 @@ def _poll_task(task_id: str) -> Optional[str]:
                 result = r.json()
                 output = result.get("output", {})
                 status = output.get("task_status", "")
-                print(f"[视频生成] 轮询状态: {status}")
+                logger.info("[视频生成] 轮询状态: %s", status)
 
                 if status == "SUCCEEDED":
                     video_url = output.get("video_url")
@@ -204,14 +206,14 @@ def _poll_task(task_id: str) -> Optional[str]:
                         return results[0].get("url", "")
                 elif status == "FAILED":
                     msg = output.get("message", "未知错误")
-                    print(f"[视频生成] 任务失败: {msg}")
+                    logger.warning("[视频生成] 任务失败: %s", msg)
                     return None
         except Exception as e:
-            print(f"[视频生成] 轮询异常: {e}")
+            logger.warning("[视频生成] 轮询异常: %s", e)
 
         time.sleep(interval)
 
-    print(f"[视频生成] 轮询超时 ({timeout}s)")
+    logger.warning("[视频生成] 轮询超时 (%ss)", timeout)
     return None
 
 
@@ -225,12 +227,12 @@ def _download_video(video_url: str) -> str:
             with open(save_path, "wb") as f:
                 for chunk in r.iter_content(chunk_size=8192):
                     f.write(chunk)
-            print(f"[视频生成] 视频下载完成: {save_path}")
+            logger.info("[视频生成] 视频下载完成: %s", save_path)
             return f"/videos/{filename}"
         else:
-            print(f"[视频生成] 视频下载失败 HTTP {r.status_code}")
+            logger.warning("[视频生成] 视频下载失败 HTTP %s", r.status_code)
     except Exception as e:
-        print(f"[视频生成] 视频下载异常: {e}")
+        logger.warning("[视频生成] 视频下载异常: %s", e)
     # 下载失败则返回远程 URL
     return video_url
 
@@ -288,13 +290,13 @@ def _create_t2v_task(prompt: str) -> Optional[str]:
             result = r.json()
             task_id = result.get("output", {}).get("task_id")
             if task_id:
-                print(f"[文生视频] 任务创建成功: {task_id}")
+                logger.info("[文生视频] 任务创建成功: %s", task_id)
                 return task_id
-            print(f"[文生视频] 任务创建返回无 task_id: {result}")
+            logger.warning("[文生视频] 任务创建返回无 task_id: %s", result)
         else:
-            print(f"[文生视频] 任务创建失败 HTTP {r.status_code}: {r.text[:300]}")
+            logger.warning("[文生视频] 任务创建失败 HTTP %s: %s", r.status_code, r.text[:300])
     except Exception as e:
-        print(f"[文生视频] 任务创建异常: {e}")
+        logger.warning("[文生视频] 任务创建异常: %s", e)
     return None
 
 
@@ -320,19 +322,19 @@ def generate_text_video_task(prompt: str) -> Dict[str, Any]:
     _save_task(task)
 
     # 步骤1：创建 T2V 任务
-    print(f"[文生视频] 步骤1: 创建 T2V 任务 (model={VIDEO_T2V_CONFIG.get('model')})")
+    logger.info("[文生视频] 步骤1: 创建 T2V 任务 (model=%s)", VIDEO_T2V_CONFIG.get('model'))
     ds_task_id = _create_t2v_task(prompt)
     if not ds_task_id:
         return _do_fallback(prompt, "", "，任务创建失败")
 
     # 步骤2：轮询任务状态（复用 R2V 的轮询逻辑）
-    print(f"[文生视频] 步骤2: 轮询任务 {ds_task_id}")
+    logger.info("[文生视频] 步骤2: 轮询任务 %s", ds_task_id)
     video_url = _poll_task(ds_task_id)
     if not video_url:
         return _do_fallback(prompt, "", "，视频生成超时或失败")
 
     # 步骤3：下载视频到本地
-    print(f"[文生视频] 步骤3: 下载视频")
+    logger.info("[文生视频] 步骤3: 下载视频")
     local_video = _download_video(video_url)
 
     # 更新任务记录
@@ -385,25 +387,25 @@ def generate_video_task(prompt: str, image_path: str = "", image_bytes: bytes = 
     task = _create_task_record(prompt, image_path, "processing")
 
     # 步骤1：上传图片到 DashScope
-    print(f"[视频生成] 步骤1: 上传图片 {image_path}")
+    logger.info("[视频生成] 步骤1: 上传图片 %s", image_path)
     remote_url = _upload_image_to_dashscope(image_path)
     if not remote_url:
         return _do_fallback(prompt, image_path, "，图片上传失败")
 
     # 步骤2：创建 R2V 任务
-    print(f"[视频生成] 步骤2: 创建 R2V 任务 (model={_MODEL})")
+    logger.info("[视频生成] 步骤2: 创建 R2V 任务 (model=%s)", _MODEL)
     ds_task_id = _create_r2v_task(prompt, remote_url)
     if not ds_task_id:
         return _do_fallback(prompt, image_path, "，任务创建失败")
 
     # 步骤3：轮询任务状态
-    print(f"[视频生成] 步骤3: 轮询任务 {ds_task_id}")
+    logger.info("[视频生成] 步骤3: 轮询任务 %s", ds_task_id)
     video_url = _poll_task(ds_task_id)
     if not video_url:
         return _do_fallback(prompt, image_path, "，视频生成超时或失败")
 
     # 步骤4：下载视频到本地
-    print(f"[视频生成] 步骤4: 下载视频")
+    logger.info("[视频生成] 步骤4: 下载视频")
     local_video = _download_video(video_url)
 
     # 更新任务记录
@@ -445,7 +447,7 @@ def delete_video_task(task_id: str) -> bool:
                 json.dump(tasks, f, ensure_ascii=False, indent=2)
             return True
         except Exception as e:
-            print(f"[视频生成] 删除任务失败: {e}")
+            logger.error("[视频生成] 删除任务失败: %s", e)
     return False
 
 

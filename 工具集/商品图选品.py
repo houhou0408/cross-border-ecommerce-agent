@@ -17,6 +17,8 @@ from typing import Dict, Any, Optional
 from langchain_core.tools import tool
 
 from config import LOG_DIR
+from 模块.日志统计 import get_file_logger
+logger = get_file_logger("商品图选品")
 
 # DashScope API Key（复用视频/图片生成的 key）
 _DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
@@ -126,7 +128,7 @@ def analyze_product_image(image_path: str, requirements: str = "") -> Dict[str, 
     except ImportError:
         return {"识别失败": True, "原因": "dashscope 库未安装"}
     except Exception as e:
-        print(f"[商品图选品] Qwen-VL 调用异常: {e}")
+        logger.warning("[商品图选品] Qwen-VL 调用异常: %s", e)
         return {"识别失败": True, "原因": f"视觉分析异常: {str(e)[:100]}"}
 
 

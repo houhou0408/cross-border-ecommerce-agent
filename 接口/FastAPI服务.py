@@ -14,10 +14,17 @@
 - GET  /stats             运行统计（调用量/耗时/幻觉拦截率）
 """
 import sys
+import time
 from pathlib import Path
 
 # 确保项目根目录在 sys.path（兼容直接运行）
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+# 项目自带第三方依赖目录 libs/（pip 未全局安装时兜底），
+# 保证 `python 接口/FastAPI服务.py` 直接启动不因缺包报错
+_libs_dir = Path(__file__).resolve().parent.parent / "libs"
+if _libs_dir.exists():
+    sys.path.insert(0, str(_libs_dir))
 
 from fastapi import FastAPI, UploadFile, File, Form, Depends
 from fastapi.responses import FileResponse
@@ -117,7 +124,33 @@ def index():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "跨境电商AIAgent"}
+    """健康检查：返回各组件状态（MySQL/向量库/LLM/视频生成）。
+
+    设计说明：
+    - MySQL：真实连接探测（3s 超时，失败=降级运行，不算致命）；
+    - 向量库：只查 chroma.sqlite3 文件存在性，不加载模型（避免健康检查拖慢服务）；
+    - LLM / DashScope：检查 API Key 是否已配置。
+    - status: ok=全部就绪；degraded=部分组件不可用（服务仍可用，走降级链）。
+    """
+    from config import CHROMA_DIR, LLM_CONFIG, VIDEO_CONFIG
+    from 工具集.数据库连接 import is_db_available
+
+    llm_key = (LLM_CONFIG.get("api_key") or "").strip()
+    dashscope_key = (VIDEO_CONFIG.get("api_key") or "").strip()
+    components = {
+        "mysql": is_db_available(),
+        "vectorstore": (CHROMA_DIR / "chroma.sqlite3").exists(),
+        "llm": bool(llm_key) and llm_key != "sk-your-api-key",
+        "dashscope": bool(dashscope_key),
+    }
+    degraded = [k for k, v in components.items() if not v]
+    return {
+        "status": "ok" if not degraded else "degraded",
+        "service": "跨境电商AIAgent",
+        "components": components,
+        "degraded": degraded,
+        "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
 
 
 # ============ 用户认证接口 ============
@@ -450,6 +483,106 @@ def image_task_delete(task_id: str):
     """删除单个卖点图任务。"""
     ok = delete_image_task(task_id)
     return {"deleted": ok, "task_id": task_id}
+
+
+# ============ 智能客服接口（买家售前售后 + 卖家话术助手） ============
+class SupportRequest(BaseModel):
+    query: str = Field(..., min_length=1, description="买家咨询 / 待回复买家问题")
+    mode: str = Field("buyer", description="buyer=买家客服 / seller=卖家话术助手")
+    session_id: str | None = Field(None, description="客服会话ID；为空则自动新建（带 cs_ 前缀，与主对话隔离）")
+
+
+class SupportReviewRequest(BaseModel):
+    session_id: str | None = Field(None, description="客服会话ID")
+    query: str = Field("", description="原始问题")
+    answer: str = Field("", description="客服回答")
+    rating: str = Field("good", description="good/bad")
+    comment: str = Field("", description="评价备注")
+
+
+class SupportTransferRequest(BaseModel):
+    session_id: str | None = Field(None, description="客服会话ID")
+
+
+@app.post("/support/ask")
+def support_ask(req: SupportRequest):
+    """智能客服统一入口：买家接待 / 卖家话术生成，复用记忆模块做多轮会话。
+
+    客服会话复用与主对话同一套记忆存储（会话隔离由前端页面管理）。
+    """
+    from 模块.智能客服 import buyer_reply, seller_reply
+
+    memory = get_memory()
+
+    # 会话管理：无 session_id 则新建（与主对话同一套会话体系）
+    if req.session_id:
+        sid = req.session_id
+    else:
+        sid = memory.create_session(title="客服会话")["id"]
+
+    # 取历史（不含本轮），写回本轮用户消息后再生成
+    history = memory.get_history(sid, max_turns=10)
+    memory.add_message(sid, "user", req.query)
+    try:
+        if req.mode == "seller":
+            result = seller_reply(req.query, history)
+        else:
+            result = buyer_reply(req.query, history)
+    except Exception as e:  # noqa: BLE001
+        result = {"reply": "客服服务暂时不可用，请稍后再试或转人工。", "type": "error",
+                  "grounded": False, "error": str(e)[:120]}
+
+    memory.add_message(sid, "assistant", result.get("reply", ""))
+    result["session_id"] = sid
+    result["mode"] = req.mode
+    return result
+
+
+@app.get("/support/faq/topics")
+def support_faq_topics():
+    """返回客服可覆盖的 FAQ 主题列表（前端引导用）。"""
+    from 模块.智能客服 import list_faq_topics
+    return {"topics": list_faq_topics()}
+
+
+@app.post("/support/review")
+def support_review(req: SupportReviewRequest):
+    """对客服回答做人工评价（好/差），写入反馈闭环。"""
+    from 模块.智能客服 import record_review
+    res = record_review(req.query, req.answer, req.rating, req.comment)
+    return res
+
+
+@app.post("/support/transfer")
+def support_transfer(req: SupportTransferRequest):
+    """转人工：基于本次会话生成交接摘要，说明转人工后由坐席跟进。"""
+    from 模块.智能客服 import build_transfer_summary
+
+    sid = req.session_id if req.session_id else ""
+    history = get_memory().get_history(sid, max_turns=10) if sid else []
+    summary = build_transfer_summary(history)
+    return {
+        "ok": True,
+        "msg": "已为您转接人工客服，坐席将带着本次沟通记录继续为您服务，请稍候。",
+        "session_id": sid,
+        "summary": summary,
+    }
+
+
+@app.get("/support/sessions/{session_id}")
+def support_session(session_id: str):
+    """获取客服会话详情（含历史消息）。"""
+    sess = get_memory().get_session(session_id)
+    if not sess:
+        return {"error": "会话不存在"}
+    return sess
+
+
+@app.delete("/support/sessions/{session_id}")
+def support_session_delete(session_id: str):
+    """删除客服会话。"""
+    ok = get_memory().delete_session(session_id)
+    return {"deleted": ok, "session_id": session_id}
 
 
 if __name__ == "__main__":

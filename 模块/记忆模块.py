@@ -18,6 +18,8 @@ from typing import Dict, Any, List, Optional
 
 from config import LOG_DIR
 from 工具集.数据库连接 import get_cursor
+from 模块.日志统计 import get_file_logger
+logger = get_file_logger("记忆模块")
 
 # 无 MySQL 时的 JSON 文件降级路径
 _SESSION_FILE = LOG_DIR / "sessions.json"
@@ -87,7 +89,7 @@ class 记忆管理器:
             with open(_SESSION_FILE, "w", encoding="utf-8") as f:
                 json.dump(self._mem_sessions, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            print(f"[记忆模块] JSON 持久化失败: {e}")
+            logger.warning("[记忆模块] JSON 持久化失败: %s", e)
 
     # ---------- 会话 CRUD ----------
     def create_session(self, title: str = "新对话") -> Dict[str, Any]:

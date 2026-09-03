@@ -32,6 +32,8 @@ from 工具集.智能筛品 import 智能选品分析
 from 工具集.痛点拆解 import 痛点分析
 from 工具集.商品图选品 import 商品图选品分析
 from 模块.反馈闭环 import 记录反馈, 查看反馈统计
+from 模块.日志统计 import get_file_logger
+logger = get_file_logger("Agent调度")
 
 
 # 系统提示词：ReAct 思维链引导
@@ -174,8 +176,8 @@ class 跨境Agent:
             if _has_intent and _img_match:
                 _img_path = _img_match.group(1)
                 _user_q = _img_match.group(2).strip()
-                print(f"[Agent] 检测到图片+选品意图，强制路由到商品图选品分析 "
-                      f"(image={_img_path}, q={_user_q[:60]})")
+                logger.info("[Agent] 检测到图片+选品意图，强制路由到商品图选品分析 "
+                            "(image=%s, q=%s)", _img_path, _user_q[:60])
                 try:
                     _result = 商品图选品分析.invoke({
                         "image_path": _img_path,
@@ -220,17 +222,17 @@ class 跨境Agent:
                     except Exception:
                         pass
                     if self.verbose:
-                        print(f"\n[Agent] 耗时={latency_ms}ms 工具链={_tools_used} 置信度={verify.grounding_score}")
+                        logger.info("\n[Agent] 耗时=%sms 工具链=%s 置信度=%s", latency_ms, _tools_used, verify.grounding_score)
                     return payload
                 except Exception as _fe:
-                    print(f"[Agent] 商品图选品分析强制调用失败: {_fe}，回退到正常 LLM 流程")
+                    logger.warning("[Agent] 商品图选品分析强制调用失败: %s，回退到正常 LLM 流程", _fe)
 
         # ---- 前置意图检测2：选品后的素材生成序号输入 ----
         # 用户在选品报告后输入 "1" / "2" / "3" / "全部生成" → 强制调用对应工具
         _followup_match = re.match(r'^\s*(1|2|3|全部生成|全部)\s*$', query.strip())
         if _followup_match:
             _choice = _followup_match.group(1)
-            print(f"[Agent] 检测到素材生成序号: {_choice}")
+            logger.info("[Agent] 检测到素材生成序号: %s", _choice)
 
             # 从对话历史中提取上下文
             _ctx_category = ""
@@ -261,7 +263,7 @@ class 跨境Agent:
             if not _ctx_category:
                 _ctx_category = "玻璃杯"  # fallback
 
-            print(f"[Agent] 检测到素材生成序号: {_choice} (品类={_ctx_category}, image={_ctx_image_path[:40] if _ctx_image_path else '无'})")
+            logger.info("[Agent] 检测到素材生成序号: %s (品类=%s, image=%s)", _choice, _ctx_category, _ctx_image_path[:40] if _ctx_image_path else '无')
 
             if _choice in ("1",):
                 _tool_result = 生成产品Listing.invoke({
@@ -353,7 +355,7 @@ class 跨境Agent:
                 except Exception:
                     pass
                 if self.verbose:
-                    print(f"\n[Agent] 耗时={latency_ms}ms 工具链={_tools_used} 置信度={verify.grounding_score}")
+                    logger.info("\n[Agent] 耗时=%sms 工具链=%s 置信度=%s", latency_ms, _tools_used, verify.grounding_score)
                 return payload
 
         # 每次请求重建 executor，避免 httpx client 复用关闭问题
@@ -420,7 +422,7 @@ class 跨境Agent:
             pass
 
         if self.verbose:
-            print(f"\n[Agent] 耗时={latency_ms}ms 工具链={tools_used} 置信度={verify.grounding_score}")
+            logger.info("\n[Agent] 耗时=%sms 工具链=%s 置信度=%s", latency_ms, tools_used, verify.grounding_score)
 
         return payload
 
@@ -549,5 +551,5 @@ def get_agent() -> 跨境Agent:
 if __name__ == "__main__":
     agent = get_agent()
     r = agent.orchestrate("我要把蓝牙音箱出口到美国，电子产品类别，货值500美元，请查关税并换算成人民币")
-    print("\n===== 最终答案 =====")
-    print(r["answer"])
+    logger.info("\n===== 最终答案 =====")
+    logger.info("%s", r["answer"])

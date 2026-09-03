@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 
 from config import DATA_DIR
 from langchain_core.tools import tool
+from 模块.日志统计 import get_file_logger
+logger = get_file_logger("反馈闭环")
 
 
 # 反馈数据存储
@@ -37,7 +39,7 @@ def _save_feedback(records: List[Dict]):
         with open(_FEEDBACK_FILE, "w", encoding="utf-8") as f:
             json.dump(records, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"[反馈闭环] 保存失败: {e}")
+        logger.warning("[反馈闭环] 保存失败: %s", e)
 
 
 @dataclass

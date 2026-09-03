@@ -13,6 +13,8 @@ from langchain_core.documents import Document
 from langchain_community.document_loaders import TextLoader, PyPDFLoader
 
 from config import KNOWLEDGE_DIR
+from 模块.日志统计 import get_file_logger
+logger = get_file_logger("文档加载")
 
 
 # 扩展名 -> Loader 映射（.md 用 TextLoader，避免装重量级 unstructured）
@@ -37,7 +39,7 @@ def load_single_file(file_path: Path) -> List[Document]:
             d.metadata.setdefault("title", file_path.stem)
         return docs
     except Exception as e:  # noqa: BLE001
-        print(f"[文档加载] 解析失败 {file_path.name}: {e}")
+        logger.warning("[文档加载] 解析失败 %s: %s", file_path.name, e)
         return []
 
 
@@ -56,18 +58,18 @@ def load_documents(directory: Path = None) -> List[Document]:
         [p for p in directory.iterdir() if p.is_file() and p.suffix.lower() in _LOADER_MAP]
     )
     if not files:
-        print(f"[文档加载] 目录 {directory} 下未发现可加载文档")
+        logger.warning("[文档加载] 目录 %s 下未发现可加载文档", directory)
         return all_docs
 
     for fp in files:
         docs = load_single_file(fp)
         all_docs.extend(docs)
-        print(f"[文档加载] {fp.name} -> {len(docs)} 个文档块")
-    print(f"[文档加载] 完成，共加载 {len(all_docs)} 个文档")
+        logger.info("[文档加载] %s -> %s 个文档块", fp.name, len(docs))
+    logger.info("[文档加载] 完成，共加载 %s 个文档", len(all_docs))
     return all_docs
 
 
 if __name__ == "__main__":
     docs = load_documents()
     for d in docs[:2]:
-        print(f"\n--- {d.metadata} ---\n{d.page_content[:120]}")
+        logger.info("\n--- %s ---\n%s", d.metadata, d.page_content[:120])

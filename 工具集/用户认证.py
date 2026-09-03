@@ -19,6 +19,8 @@ from typing import Optional, Dict, Any
 
 from config import AUTH_CONFIG, DATA_DIR
 from 工具集.数据库连接 import get_cursor, is_db_available
+from 模块.日志统计 import get_file_logger
+logger = get_file_logger("用户认证")
 
 # 确保数据目录存在
 (DATA_DIR).mkdir(parents=True, exist_ok=True)
@@ -70,7 +72,7 @@ def _save_users(users: Dict):
         with open(_USERS_FILE, "w", encoding="utf-8") as f:
             json.dump(users, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"[认证] 用户数据保存失败: {e}")
+        logger.warning("[认证] 用户数据保存失败: %s", e)
 
 
 def _load_tokens() -> Dict[str, Dict[str, Any]]:
@@ -91,7 +93,7 @@ def _save_tokens(tokens: Dict):
         with open(_TOKENS_FILE, "w", encoding="utf-8") as f:
             json.dump(tokens, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"[认证] token 数据保存失败: {e}")
+        logger.warning("[认证] token 数据保存失败: %s", e)
 
 
 def _cleanup_tokens(tokens: Dict) -> Dict:
@@ -126,7 +128,7 @@ def register(username: str, password: str) -> Dict[str, Any]:
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
     _save_users(users)
-    print(f"[认证] 新用户注册: {username}")
+    logger.info("[认证] 新用户注册: %s", username)
     return {"ok": True, "user": {"id": users[username]["id"], "username": username}}
 
 
@@ -157,7 +159,7 @@ def login(username: str, password: str) -> Dict[str, Any]:
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
     _save_tokens(tokens)
-    print(f"[认证] 用户登录: {username}")
+    logger.info("[认证] 用户登录: %s", username)
     return {
         "ok": True,
         "token": token,

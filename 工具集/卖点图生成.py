@@ -21,6 +21,8 @@ import requests
 
 from config import LOG_DIR, IMAGE_T2I_CONFIG, IMAGE_TEMPLATES, _SCENE_MAP
 from 工具集.视频生成 import _save_upload_image, UPLOAD_DIR
+from 模块.日志统计 import get_file_logger
+logger = get_file_logger("卖点图生成")
 
 # 卖点图任务存储
 _IMAGE_TASK_DIR = LOG_DIR / "image_tasks.json"
@@ -73,7 +75,7 @@ def _save_task(task: Dict):
         with open(_IMAGE_TASK_DIR, "w", encoding="utf-8") as f:
             json.dump(tasks, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"[卖点图] 任务保存失败: {e}")
+        logger.error("[卖点图] 任务保存失败: %s", e)
 
 
 def _load_tasks() -> Dict[str, Dict]:
@@ -94,7 +96,7 @@ def _image_to_base64_url(image_path: str) -> Optional[str]:
     try:
         local_path = UPLOAD_DIR / image_path.replace("/uploads/", "")
         if not local_path.exists():
-            print(f"[卖点图] 参考图不存在: {local_path}")
+            logger.warning("[卖点图] 参考图不存在: %s", local_path)
             return None
         ext = local_path.suffix.lower().lstrip(".")
         mime = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "webp": "webp", "bmp": "bmp"}.get(ext, "png")
@@ -103,7 +105,7 @@ def _image_to_base64_url(image_path: str) -> Optional[str]:
             b64 = base64.b64encode(f.read()).decode("utf-8")
         return f"data:image/{mime};base64,{b64}"
     except Exception as e:
-        print(f"[卖点图] 参考图转 base64 异常: {e}")
+        logger.warning("[卖点图] 参考图转 base64 异常: %s", e)
         return None
 
 
@@ -151,13 +153,13 @@ def _create_t2i_task(prompt: str, size: str = "1024*1024", ref_image: str = "",
             output = result.get("output", {})
             task_id = output.get("task_id")
             if task_id:
-                print(f"[卖点图] 任务创建成功: {task_id} (ref={'有' if ref_image else '无'} prompt={prompt[:40]}...)")
+                logger.info("[卖点图] 任务创建成功: %s (ref=%s prompt=%s...)", task_id, '有' if ref_image else '无', prompt[:40])
                 return task_id
-            print(f"[卖点图] 任务创建返回无 task_id: {result}")
+            logger.warning("[卖点图] 任务创建返回无 task_id: %s", result)
         else:
-            print(f"[卖点图] 任务创建失败 HTTP {r.status_code}: {r.text[:300]}")
+            logger.warning("[卖点图] 任务创建失败 HTTP %s: %s", r.status_code, r.text[:300])
     except Exception as e:
-        print(f"[卖点图] 任务创建异常: {e}")
+        logger.warning("[卖点图] 任务创建异常: %s", e)
     return None
 
 
@@ -184,7 +186,7 @@ def _poll_task(task_id: str) -> Optional[str]:
                 result = r.json()
                 output = result.get("output", {})
                 status = output.get("task_status", "")
-                print(f"[卖点图] 轮询状态: {status}")
+                logger.info("[卖点图] 轮询状态: %s", status)
 
                 if status == "SUCCEEDED":
                     # 新版 wan2.7-image：choices[].message.content[].image
@@ -203,14 +205,14 @@ def _poll_task(task_id: str) -> Optional[str]:
                     return output.get("url")
                 elif status == "FAILED":
                     msg = output.get("message", "未知错误")
-                    print(f"[卖点图] 任务失败: {msg}")
+                    logger.warning("[卖点图] 任务失败: %s", msg)
                     return None
         except Exception as e:
-            print(f"[卖点图] 轮询异常: {e}")
+            logger.warning("[卖点图] 轮询异常: %s", e)
 
         time.sleep(interval)
 
-    print(f"[卖点图] 轮询超时 ({timeout}s)")
+    logger.warning("[卖点图] 轮询超时 (%ss)", timeout)
     return None
 
 
@@ -224,12 +226,12 @@ def _download_image(image_url: str, prefix: str = "img") -> str:
             with open(save_path, "wb") as f:
                 for chunk in r.iter_content(chunk_size=8192):
                     f.write(chunk)
-            print(f"[卖点图] 图片下载完成: {save_path}")
+            logger.info("[卖点图] 图片下载完成: %s", save_path)
             return f"/images/{filename}"
         else:
-            print(f"[卖点图] 图片下载失败 HTTP {r.status_code}")
+            logger.warning("[卖点图] 图片下载失败 HTTP %s", r.status_code)
     except Exception as e:
-        print(f"[卖点图] 图片下载异常: {e}")
+        logger.warning("[卖点图] 图片下载异常: %s", e)
     # 下载失败则返回远程 URL
     return image_url
 
@@ -336,9 +338,9 @@ def generate_selling_images(
     # 把用户上传的商品图转 base64，作为图生图参考（wan2.7-image 支持）
     ref_image_b64 = _image_to_base64_url(image_path) if image_path else ""
     if ref_image_b64:
-        print(f"[卖点图] 已加载参考图: {image_path} (base64 长度={len(ref_image_b64)})")
+        logger.info("[卖点图] 已加载参考图: %s (base64 长度=%s)", image_path, len(ref_image_b64))
     else:
-        print(f"[卖点图] 无参考图，走纯文生图（product 描述决定生成内容）")
+        logger.info("[卖点图] 无参考图，走纯文生图（product 描述决定生成内容）")
 
     # 逐种类型生成（通义万相 T2I 一次只生成一张，逐个调用）
     for key in types:
@@ -346,8 +348,8 @@ def generate_selling_images(
         name = tpl.get("name", key)
         prompt = _build_prompt(key, product, features, category)
 
-        print(f"\n[卖点图] 生成 {name} (type={key})")
-        print(f"[卖点图] prompt: {prompt[:80]}...")
+        logger.info("\n[卖点图] 生成 %s (type=%s)", name, key)
+        logger.info("[卖点图] prompt: %s...", prompt[:80])
 
         # 详情长图用竖版尺寸
         size = "768*1024" if key == "detail" else IMAGE_T2I_CONFIG.get("size", "1024*1024")
@@ -429,7 +431,7 @@ def delete_image_task(task_id: str) -> bool:
                 json.dump(tasks, f, ensure_ascii=False, indent=2)
             return True
         except Exception as e:
-            print(f"[卖点图] 删除任务失败: {e}")
+            logger.error("[卖点图] 删除任务失败: %s", e)
     return False
 
 

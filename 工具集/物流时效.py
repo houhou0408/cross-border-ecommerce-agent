@@ -21,6 +21,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from langchain_core.tools import tool
 
 from config import LOG_DIR
+from 模块.日志统计 import get_file_logger
+logger = get_file_logger("物流时效")
 
 # ============ Freightos FBX 实时运价指数 ============
 # FBX 页面为 JS 渲染，需浏览器引擎才能获取实时值。
@@ -76,10 +78,10 @@ def _fetch_fbx_indices() -> Dict[str, Any]:
             if indices:
                 _FBX_LAST_VALUES.update(indices)
                 _FBX_LAST_FETCH = now
-                print(f"[物流] FBX 运价刷新成功: {len(indices)} 条航线")
+                logger.info("[物流] FBX 运价刷新成功: %s 条航线", len(indices))
                 return _FBX_LAST_VALUES
     except Exception as e:
-        print(f"[物流] FBX 刷新失败（将使用上次真实数据）: {e}")
+        logger.warning("[物流] FBX 刷新失败（将使用上次真实数据）: %s", e)
 
     _FBX_LAST_FETCH = _FBX_LAST_FETCH or now
     return _FBX_LAST_VALUES

@@ -22,6 +22,8 @@ import requests
 
 from config import LOG_DIR
 from 工具集.数据库连接 import get_cursor
+from 模块.日志统计 import get_file_logger
+logger = get_file_logger("数据采集")
 
 # ============ 缓存 ============
 # 内存缓存：{ key: { "data": ..., "ts": timestamp } }
@@ -117,15 +119,15 @@ def _fetch_rates_from_api() -> Optional[Dict[str, float]]:
                 data = r.json()
                 # open.er-api.com 格式
                 if "rates" in data:
-                    print(f"[数据采集] 汇率采集成功 (source={url})")
+                    logger.info("[数据采集] 汇率采集成功 (source=%s)", url)
                     return {k: float(v) for k, v in data["rates"].items()}
                 # frankfurter 格式
                 if "rates" in data:
                     return {k: float(v) for k, v in data["rates"].items()}
         except Exception as e:
-            print(f"[数据采集] 汇率 API 异常 ({url}): {e}")
+            logger.warning("[数据采集] 汇率 API 异常 (%s): %s", url, e)
             continue
-    print("[数据采集] 所有汇率 API 均不可用，降级处理")
+    logger.warning("[数据采集] 所有汇率 API 均不可用，降级处理")
     return None
 
 
@@ -145,7 +147,7 @@ def _save_rates_to_db(rates: Dict[str, float]) -> None:
                     ("USD", to_cur, rate, rate),
                 )
         except Exception as e:
-            print(f"[数据采集] 汇率回写 DB 失败: {e}")
+            logger.warning("[数据采集] 汇率回写 DB 失败: %s", e)
 
 
 def get_rate(from_cur: str, to_cur: str) -> float:
@@ -279,7 +281,7 @@ def _fetch_canopy_search(category: str, market: str) -> Optional[Dict[str, Any]]
                 timeout=15,
             )
             if resp.status_code != 200:
-                print(f"[数据采集] Canopy API HTTP {resp.status_code}: {resp.text[:200]}")
+                logger.warning("[数据采集] Canopy API HTTP %s: %s", resp.status_code, resp.text[:200])
                 break
 
             data = resp.json()
@@ -301,10 +303,10 @@ def _fetch_canopy_search(category: str, market: str) -> Optional[Dict[str, Any]]
                     "图片": item.get("image", ""),  # Canopy 额外返回商品图
                 })
         except requests.exceptions.Timeout:
-            print(f"[数据采集] Canopy API 第{page}页超时")
+            logger.warning("[数据采集] Canopy API 第%s页超时", page)
             break
         except Exception as e:
-            print(f"[数据采集] Canopy API 第{page}页异常: {e}")
+            logger.warning("[数据采集] Canopy API 第%s页异常: %s", page, e)
             break
 
     if not all_results:
@@ -317,7 +319,7 @@ def _fetch_canopy_search(category: str, market: str) -> Optional[Dict[str, Any]]
         "市场": market,
         "域名": domain,
     }
-    print(f"[数据采集] Canopy 采集成功 (category={category}, market={market}, 共 {len(all_results)} 个竞品, 2页)")
+    logger.info("[数据采集] Canopy 采集成功 (category=%s, market=%s, 共 %s 个竞品, 2页)", category, market, len(all_results))
     return result
 
 
@@ -366,7 +368,7 @@ def fetch_rainforest_competitors(category: str, market: str = "美国") -> Optio
         # Canopy 失败，继续尝试 Rainforest
 
     if not _RAINFOREST_API_KEY:
-        print("[数据采集] 未配置 RAINFOREST_API_KEY，跳过 Rainforest 采集")
+        logger.warning("[数据采集] 未配置 RAINFOREST_API_KEY，跳过 Rainforest 采集")
         return None
 
     search_term = _CATEGORY_SEARCH_MAP.get(category, category)
@@ -384,18 +386,18 @@ def fetch_rainforest_competitors(category: str, market: str = "美国") -> Optio
     try:
         resp = requests.get(_RAINFOREST_ENDPOINT, params=params, timeout=15)
         if resp.status_code != 200:
-            print(f"[数据采集] Rainforest API HTTP {resp.status_code}: {resp.text[:200]}")
+            logger.warning("[数据采集] Rainforest API HTTP %s: %s", resp.status_code, resp.text[:200])
             return None
 
         data = resp.json()
         request_info = data.get("request_info", {}) or {}
         if not request_info.get("success", False):
-            print(f"[数据采集] Rainforest API 返回失败: {request_info.get('message')}")
+            logger.warning("[数据采集] Rainforest API 返回失败: %s", request_info.get('message'))
             return None
 
         products = data.get("search_results", []) or []
         if not products:
-            print(f"[数据采集] Rainforest 未返回商品 (category={category}, market={market})")
+            logger.warning("[数据采集] Rainforest 未返回商品 (category=%s, market=%s)", category, market)
             return None
 
         competitors: List[Dict[str, Any]] = []
@@ -420,14 +422,14 @@ def fetch_rainforest_competitors(category: str, market: str = "美国") -> Optio
             "域名": amazon_domain,
         }
         _set_cache(cache_key, result)
-        print(f"[数据采集] Rainforest 采集成功 (category={category}, market={market}, 共 {len(competitors)} 个竞品)")
+        logger.info("[数据采集] Rainforest 采集成功 (category=%s, market=%s, 共 %s 个竞品)", category, market, len(competitors))
         return result
 
     except requests.exceptions.Timeout:
-        print("[数据采集] Rainforest API 请求超时（15s）")
+        logger.warning("[数据采集] Rainforest API 请求超时（15s）")
         return None
     except Exception as e:
-        print(f"[数据采集] Rainforest API 异常: {e}")
+        logger.warning("[数据采集] Rainforest API 异常: %s", e)
         return None
 
 
@@ -444,7 +446,7 @@ def _fetch_canopy_reviews(asin: str, domain: str = "US", max_reviews: int = 5) -
             timeout=15,
         )
         if resp.status_code != 200:
-            print(f"[数据采集] Canopy 评论 HTTP {resp.status_code}")
+            logger.warning("[数据采集] Canopy 评论 HTTP %s", resp.status_code)
             return None
         data = resp.json()
         reviews_raw = data.get("reviews", []) or data.get("topReviews", []) or []
@@ -457,10 +459,10 @@ def _fetch_canopy_reviews(asin: str, domain: str = "US", max_reviews: int = 5) -
                 "date": str(r.get("date", "")),
             })
         result = {"asin": asin, "reviews": reviews}
-        print(f"[数据采集] Canopy 评论采集成功 (asin={asin}, {len(reviews)}条)")
+        logger.info("[数据采集] Canopy 评论采集成功 (asin=%s, %s条)", asin, len(reviews))
         return result
     except Exception as e:
-        print(f"[数据采集] Canopy 评论采集异常: {e}")
+        logger.warning("[数据采集] Canopy 评论采集异常: %s", e)
         return None
 
 
@@ -521,10 +523,10 @@ def fetch_rainforest_reviews(asin: str, amazon_domain: str = "amazon.com", max_r
             })
         result = {"asin": asin, "reviews": reviews}
         _set_cache(cache_key, result)
-        print(f"[数据采集] Rainforest 评论采集成功 (asin={asin}, {len(reviews)}条)")
+        logger.info("[数据采集] Rainforest 评论采集成功 (asin=%s, %s条)", asin, len(reviews))
         return result
     except Exception as e:
-        print(f"[数据采集] Rainforest 评论采集异常: {e}")
+        logger.warning("[数据采集] Rainforest 评论采集异常: %s", e)
         return None
 
 
@@ -681,7 +683,7 @@ def _fetch_trends_online(category: str, market: str) -> Optional[Dict[str, Any]]
     rf_data = fetch_rainforest_competitors(category, market)
     if rf_data and rf_data.get("竞品列表"):
         trend_data = _summarize_competitors_to_trend(rf_data)
-        print(f"[数据采集] 选品热度采集成功 (Rainforest, category={category}, market={market})")
+        logger.info("[数据采集] 选品热度采集成功 (Rainforest, category=%s, market=%s)", category, market)
         return trend_data
 
     # 2) 降级到模拟数据（演示流程可用）
@@ -707,10 +709,10 @@ def _fetch_trends_online(category: str, market: str) -> Optional[Dict[str, Any]]
 
     data = mock_collected.get(category)
     if data:
-        print(f"[数据采集] 选品热度采集成功 (模拟降级, category={category}, market={market})")
+        logger.warning("[数据采集] 选品热度采集成功 (模拟降级, category=%s, market=%s)", category, market)
         return data
 
-    print(f"[数据采集] 未采集到 {category} 的热度数据")
+    logger.warning("[数据采集] 未采集到 %s 的热度数据", category)
     return None
 
 
@@ -735,7 +737,7 @@ def _save_trend_to_db(category: str, market: str, data: Dict) -> None:
                 ),
             )
         except Exception as e:
-            print(f"[数据采集] 热度数据回写 DB 失败: {e}")
+            logger.warning("[数据采集] 热度数据回写 DB 失败: %s", e)
 
 
 # ============ 采集状态汇总（供前端展示）============

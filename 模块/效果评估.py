@@ -16,6 +16,8 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 
 from 模块.Agent调度 import get_agent
+from 模块.日志统计 import get_file_logger
+logger = get_file_logger("效果评估")
 
 
 # ============ 标准测试集 ============
@@ -266,7 +268,7 @@ class 评估器:
         """批量执行测试集，返回汇总报告。"""
         results: List[单条结果] = []
         for item in self.test_set:
-            print(f"[评估] 执行 {item['id']}: {item['query'][:30]}...")
+            logger.info("[评估] 执行 %s: %s...", item['id'], item['query'][:30])
             r = self.run_once(item)
             results.append(r)
             time.sleep(0.5)  # 避免请求过快

@@ -26,6 +26,8 @@ except ImportError:
 
 from config import RETRIEVAL_CONFIG
 from 模块.切片向量化 import load_vectorstore
+from 模块.日志统计 import get_file_logger
+logger = get_file_logger("检索器")
 
 
 # 高频泛词（无区分度，过滤后关键词重叠分更有意义）
@@ -140,7 +142,7 @@ class 检索器:
         results.sort(key=lambda r: r.score, reverse=True)
         results = results[:top_k]
 
-        print(f"[检索器] query='{query[:30]}' 命中 {len(results)} 条")
+        logger.info("[检索器] query='%s' 命中 %s 条", query[:30], len(results))
         return results
 
     def search(self, query: str, top_k: int = None) -> List[RetrievalResult]:
@@ -209,4 +211,4 @@ class 检索器:
 if __name__ == "__main__":
     r = 检索器()
     for hit in r.search_with_scores("亚马逊Listing标题有什么要求"):
-        print(f"\n[{hit.score}] {hit.source}\n{hit.content[:100]}")
+        logger.info("\n[%s] %s\n%s", hit.score, hit.source, hit.content[:100])

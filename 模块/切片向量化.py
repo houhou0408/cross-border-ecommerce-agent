@@ -14,6 +14,8 @@ from langchain_core.embeddings import Embeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from config import EMBEDDING_CONFIG, CHROMA_CONFIG, RETRIEVAL_CONFIG
+from 模块.日志统计 import get_file_logger
+logger = get_file_logger("切片向量化")
 
 # 全局缓存，避免重复加载模型（embedding 模型加载较慢）
 _embedding_model: Optional[Embeddings] = None
@@ -36,7 +38,7 @@ def get_embedding_model() -> Embeddings:
             model_name=EMBEDDING_CONFIG["hf_model"],
             encode_kwargs={"normalize_embeddings": True},  # 归一化便于余弦相似度
         )
-    print(f"[切片向量化] Embedding 模型已加载: provider={provider}")
+    logger.info("[切片向量化] Embedding 模型已加载: provider=%s", provider)
     return _embedding_model
 
 
@@ -52,7 +54,7 @@ def split_documents(docs: List[Document]) -> List[Document]:
         separators=["\n\n", "\n", "。", "！", "？", "；", ".", "!", "?", ";", " ", ""],
     )
     chunks = splitter.split_documents(docs)
-    print(f"[切片向量化] 切片完成: {len(docs)} 文档 -> {len(chunks)} 块")
+    logger.info("[切片向量化] 切片完成: %s 文档 -> %s 块", len(docs), len(chunks))
     return chunks
 
 
@@ -71,7 +73,7 @@ def build_vectorstore(docs: List[Document] = None, force_rebuild: bool = False):
     if force_rebuild and persist_dir.exists():
         shutil.rmtree(persist_dir)
         persist_dir.mkdir(parents=True, exist_ok=True)
-        print(f"[切片向量化] 已清空旧向量库: {persist_dir}")
+        logger.info("[切片向量化] 已清空旧向量库: %s", persist_dir)
 
     if docs is None:
         from 模块.文档加载 import load_documents
@@ -86,7 +88,7 @@ def build_vectorstore(docs: List[Document] = None, force_rebuild: bool = False):
         collection_name=CHROMA_CONFIG["collection_name"],
         persist_directory=CHROMA_CONFIG["persist_dir"],
     )
-    print(f"[切片向量化] 向量库构建完成，共 {len(chunks)} 条向量")
+    logger.info("[切片向量化] 向量库构建完成，共 %s 条向量", len(chunks))
     return vs
 
 
@@ -115,7 +117,7 @@ def load_vectorstore(collection_name: str = None):
     embedding = get_embedding_model()
 
     if not persist_dir.exists() or not any(persist_dir.iterdir()):
-        print("[切片向量化] 未检测到向量库，开始自动构建...")
+        logger.info("[切片向量化] 未检测到向量库，开始自动构建...")
         return build_vectorstore()
 
     vs = Chroma(
@@ -123,7 +125,7 @@ def load_vectorstore(collection_name: str = None):
         embedding_function=embedding,
         persist_directory=CHROMA_CONFIG["persist_dir"],
     )
-    print(f"[切片向量化] 已加载向量库: {persist_dir}, collection={actual_name}")
+    logger.info("[切片向量化] 已加载向量库: %s, collection=%s", persist_dir, actual_name)
     return vs
 
 
@@ -136,7 +138,7 @@ def add_documents(docs: List[Document]):
     chunks = split_documents(docs)
     vs = load_vectorstore()
     vs.add_documents(chunks)
-    print(f"[切片向量化] 增量入库 {len(chunks)} 条切片")
+    logger.info("[切片向量化] 增量入库 %s 条切片", len(chunks))
     return len(chunks)
 
 
@@ -165,7 +167,7 @@ def add_documents_to_library(documents: list, library: str = "products"):
         persist_directory=CHROMA_CONFIG["persist_dir"],
     )
     vs.add_documents(chunks)
-    print(f"[切片向量化] 增量入库 {library}({collection_name}): {len(chunks)} 条切片")
+    logger.info("[切片向量化] 增量入库 %s(%s): %s 条切片", library, collection_name, len(chunks))
     return len(chunks)
 
 
@@ -206,7 +208,7 @@ def delete_document(source: str) -> int:
     collection.delete(where={"source": source})
     after = collection.count()
     deleted = before - after
-    print(f"[切片向量化] 删除 {source}: {deleted} 条切片")
+    logger.info("[切片向量化] 删除 %s: %s 条切片", source, deleted)
     return deleted
 
 

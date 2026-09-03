@@ -30,7 +30,25 @@ def _setup_file_logger() -> logging.Logger:
     sh = logging.StreamHandler()
     sh.setFormatter(logging.Formatter("%(asctime)s | %(message)s"))
     logger.addHandler(sh)
+    # 子 logger（跨境Agent.xxx）消息向父级传播，统一走这套 handler
+    logging.getLogger("跨境Agent").propagate = False
     return logger
+
+
+def get_file_logger(name: str = "") -> logging.Logger:
+    """获取挂载到全局文件日志体系的 logger（各业务模块统一日志入口）。
+
+    Args:
+        name: 模块名（如 "视频生成"），生成子 logger "跨境Agent.视频生成"；
+              留空返回根 logger。
+
+    说明：日志同时落盘 LOG_DIR/agent_YYYYMMDD.log 与控制台；
+    子 logger 消息会传播到 "跨境Agent" 根 logger 的 handler，无需重复配置。
+    """
+    _setup_file_logger()
+    if name:
+        return logging.getLogger(f"跨境Agent.{name}")
+    return logging.getLogger("跨境Agent")
 
 
 class 日志统计器:
@@ -123,7 +141,7 @@ class 日志统计器:
         path = path or (LOG_DIR / "调用记录.json")
         with open(path, "w", encoding="utf-8") as f:
             json.dump(self._mem_buffer, f, ensure_ascii=False, indent=2)
-        print(f"[日志统计] 已导出调用记录 -> {path}")
+        self.logger.info("[日志统计] 已导出调用记录 -> %s", path)
 
 
 _logger_instance: Optional[日志统计器] = None
