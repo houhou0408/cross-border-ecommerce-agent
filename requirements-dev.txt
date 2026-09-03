@@ -1,0 +1,6 @@
+# ===== 开发/测试依赖（生产不需要） =====
+# 安装: pip install -r requirements-dev.txt
+
+pytest==8.3.4
+pytest-cov==6.0.0
+httpx==0.28.1

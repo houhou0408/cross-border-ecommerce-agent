@@ -33,8 +33,9 @@ def _normalize_text(text: str) -> str:
     t = re.sub(r"[|*#`_>\[\]()]", "", text)
     t = re.sub(r"-{3,}", " ", t)
     # 删除 markdown 列表序号（"1. xxx" / "2、xxx" / "3) xxx"）：
-    # 序号是排版编号而非事实数字，不应参与覆盖率/数字溯源比对
-    t = re.sub(r"(^|\n)\s*\d+[.、)]", r"\1", t)
+    # 序号是排版编号而非事实数字，不应参与覆盖率/数字溯源比对。
+    # 要求序号后必须跟空白——否则 "60.00" 这类行首小数会被误当序号 "60." 吃掉
+    t = re.sub(r"(^|\n)\s*\d+[.、)]\s", r"\1", t)
 
     def _fmt(m):
         s = m.group(0)
@@ -101,7 +102,19 @@ class 幻觉治理器:
         import jieba
         ans_norm = _normalize_text(answer)
         ctx_norm = _normalize_text(support_context)
-        ans_tokens = {t for t in jieba.lcut(ans_norm) if len(t.strip()) > 1}
+
+        # 诚实降级标注（"……，具体以官方为准"）是元信息而非事实内容，
+        # 覆盖率只统计标注前的正文——否则"诚实标注"反而稀释覆盖率被扣分
+        _HONEST_HINTS = ("未核实", "未命中", "未检索", "以官方为准", "行业通用", "不存在", "无法提供")
+        honest_hit = next((h for h in _HONEST_HINTS if h in answer), None)
+        ans_for_cov = answer
+        if honest_hit:
+            prefix = answer[:answer.find(honest_hit)]
+            cut = max(prefix.rfind(p) for p in "，,。；;！？ \n")
+            if cut > 4:  # 标注前仍有足够正文才截断
+                ans_for_cov = prefix[:cut]
+
+        ans_tokens = {t for t in jieba.lcut(_normalize_text(ans_for_cov)) if len(t.strip()) > 1}
         ctx_tokens = set(jieba.lcut(ctx_norm))
         if ans_tokens:
             coverage = len(ans_tokens & ctx_tokens) / len(ans_tokens)
@@ -128,8 +141,7 @@ class 幻觉治理器:
         # ---- 2.6) 诚实降级标注加分 ----
         # 答案明确标注"未核实/以官方为准/不存在"等，说明 Agent 没有假装确定，
         # 属于诚实的降级回答而非编造，不应按幻觉处理
-        _HONEST_HINTS = ("未核实", "未命中", "未检索", "以官方为准", "行业通用", "不存在", "无法提供")
-        if any(h in answer for h in _HONEST_HINTS):
+        if honest_hit:
             score += 0.1
             suggestions.append("答案已标注信息未核实/来源，属诚实降级而非编造")
 
