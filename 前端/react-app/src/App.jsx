@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import ChatPage from './pages/ChatPage.jsx'
 import ListingPage from './pages/ListingPage.jsx'
 import TariffPage from './pages/TariffPage.jsx'
@@ -11,13 +11,15 @@ import SupportPage from './pages/SupportPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import { api, tokenStore } from './api.js'
 
-// 顶部水平导航（极简 B 端：纯文字，无图标）
-const NAV = [
+// 浮岛胶囊导航：常用功能直显，其余收进「更多」下拉
+const NAV_PRIMARY = [
   { key: 'chat', label: '智能对话', desc: 'ReAct 多任务编排' },
+  { key: 'video', label: '素材生成', desc: '视频与卖点图生成' },
+  { key: 'listing', label: 'Listing 生成', desc: '产品文案生成' }
+]
+const NAV_MORE = [
   { key: 'support', label: '智能客服', desc: '买家接待与卖家话术' },
   { key: 'kb', label: '知识库管理', desc: '文档上传与检索配置' },
-  { key: 'video', label: '素材生成', desc: '视频与卖点图生成' },
-  { key: 'listing', label: 'Listing 生成', desc: '产品文案生成' },
   { key: 'tariff', label: '关税查询', desc: '跨境关税计算' },
   { key: 'currency', label: '汇率换算', desc: '多币种转换' },
   { key: 'stats', label: '运行统计', desc: '调用与可观测' },
@@ -33,6 +35,9 @@ export default function App() {
   const [statsVersion, setStatsVersion] = useState(0)
   const [chatResetKey, setChatResetKey] = useState(0)
   const [toast, setToast] = useState(null)
+  // 「更多」下拉展开态
+  const [moreOpen, setMoreOpen] = useState(false)
+  const moreRef = useRef(null)
   // 会话管理（真实化，从后端加载）
   const [sessions, setSessions] = useState([])
   const [activeSessionId, setActiveSessionId] = useState(null)
@@ -158,6 +163,16 @@ export default function App() {
     setChatResetKey((k) => k + 1)
   }, [])
 
+  // 「更多」下拉：点击外部关闭
+  useEffect(() => {
+    if (!moreOpen) return
+    const onDown = (e) => {
+      if (moreRef.current && !moreRef.current.contains(e.target)) setMoreOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [moreOpen])
+
   const renderPage = () => {
     switch (active) {
       case 'chat':
@@ -191,7 +206,7 @@ export default function App() {
     }
   }
 
-  const activeNav = NAV.find((n) => n.key === active)
+  const activeInMore = NAV_MORE.some((n) => n.key === active)
 
   // 未登录或正在检查 token 时，显示登录页 / 加载中
   if (!authChecked) {
@@ -203,11 +218,11 @@ export default function App() {
 
   return (
     <div className="shell">
-      {/* 顶部水平导航栏（上导航 + 下内容） */}
+      {/* 浮岛胶囊导航栏 */}
       <header className="topbar">
         <div className="topbar-brand">跨境电商 AI Agent</div>
         <nav className="topbar-nav">
-          {NAV.map((item) => (
+          {NAV_PRIMARY.map((item) => (
             <button
               key={item.key}
               className={`topbar-tab ${active === item.key ? 'active' : ''}`}
@@ -217,6 +232,32 @@ export default function App() {
               {item.label}
             </button>
           ))}
+          <div className={`nav-more ${moreOpen ? 'open' : ''}`} ref={moreRef}>
+            <button
+              className={`topbar-tab ${activeInMore ? 'active' : ''}`}
+              onClick={() => setMoreOpen((v) => !v)}
+              title="更多功能"
+            >
+              更多 <span className="caret">▾</span>
+            </button>
+            {moreOpen && (
+              <div className="nav-more-menu">
+                {NAV_MORE.map((item) => (
+                  <button
+                    key={item.key}
+                    className={`nav-more-item ${active === item.key ? 'active' : ''}`}
+                    onClick={() => {
+                      setActive(item.key)
+                      setMoreOpen(false)
+                    }}
+                  >
+                    <span className="nm-label">{item.label}</span>
+                    <span className="nm-desc">{item.desc}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </nav>
         <div className="topbar-user">
           <span className="topbar-username">{user.username}</span>
@@ -278,9 +319,9 @@ export default function App() {
   )
 }
 
-// 根据会话ID生成稳定的蓝色系头像底色（唯一主色规范：仅蓝色阶）
+// 根据会话ID生成稳定的紫红色系头像底色（唯一主色规范：仅紫色阶）
 function _colorOf(id) {
-  const colors = ['#1d4ed8', '#2563eb', '#3b82f6', '#60a5fa', '#1e40af', '#3730a3']
+  const colors = ['#8b168f', '#a93aad', '#6f1273', '#b05bb3', '#4e0d51', '#c07fc2']
   let hash = 0
   for (let i = 0; i < (id || '').length; i++) hash = id.charCodeAt(i) + ((hash << 5) - hash)
   return colors[Math.abs(hash) % colors.length]
