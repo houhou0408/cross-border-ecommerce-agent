@@ -16,7 +16,29 @@ on:
     branches: [main, master]
   pull_request:
 
+# 同分支连续 push 只保留最新一条流水线，取消过期的在途运行
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  lint:
+    name: 静态检查
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 安装 ruff
+        run: pip install ruff==0.9.6
+
+      - name: ruff 检查
+        run: ruff check .
+
   test:
     name: 单元测试
     runs-on: ubuntu-latest
@@ -42,7 +64,14 @@ jobs:
           # 占位 Key：单测不外呼，仅避免配置加载告警
           LLM_API_KEY: sk-ci-dummy
           PYTHONUTF8: "1"
-        run: pytest -q -m "not mysql" --cov=模块 --cov=工具集 --cov=接口 --cov-report=term-missing
+        run: pytest -q -m "not mysql" --cov=模块 --cov=工具集 --cov=接口 --cov=基础设施 --cov-report=term-missing
+
+      - name: 上传覆盖率报告
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: .coverage
+          retention-days: 7
 
   docker:
     name: Docker 构建验证

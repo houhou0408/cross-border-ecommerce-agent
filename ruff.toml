@@ -1,0 +1,11 @@
+# ruff 配置：最小规则集（只拦真问题：未使用导入/变量、语法级错误、裸 except 等），
+# 避免风格类告警刷屏；libs/ 为 vendored 第三方库，前端为 Node 项目，均排除。
+target-version = "py311"
+line-length = 110
+exclude = ["libs", "前端", "向量库存储", "数据"]
+
+[lint]
+select = ["E4", "E7", "E9", "F"]
+# E402：本项目入口模块先 sys.path 注入再 import 项目包，属于引导设计，非缺陷
+ignore = ["E402"]
+

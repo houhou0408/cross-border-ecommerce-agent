@@ -20,7 +20,7 @@
 | **多模态生成** | 图生视频（HappyHorse R2V）、文生视频（Wan2.1 T2V）、卖点图生成（Wan2.1 T2I，4 种营销图） |
 | **实时数据采集** | 在线汇率 API + 选品热度采集，三级降级（API → DB → 内置数据），1 小时缓存 |
 | **用户认证** | 注册 / 登录 / token 校验，pbkdf2 密码哈希，JSON 文件存储零依赖 |
-| **效果评估** | 6 条标准测试集，三大指标（工具调用成功率 / 答案命中率 / 幻觉率） |
+| **效果评估** | 16 条三档判分测试集（易/中/难），幻觉治理与命中统计 |
 | **可观测性** | 工具链、召回数、耗时、grounded 标志全链路日志（文件 + MySQL + 内存统计） |
 
 ---
@@ -29,8 +29,8 @@
 
 | 层 | 技术 |
 |----|------|
-| 编排框架 | LangChain 0.2 (create_agent / Tool / TextSplitter，基于 langgraph) |
-| 向量库 | Chroma 0.5（持久化存储） |
+| 编排框架 | LangChain 1.x (create_agent / Tool / TextSplitter，基于 langgraph) |
+| 向量库 | Chroma 1.5（持久化存储） |
 | Embedding | BGE-small-zh-v1.5 (HuggingFace 本地) / OpenAI Embedding |
 | LLM | OpenAI 兼容接口（DeepSeek / 通义千问 / OpenAI 可切换） |
 | Agent 模式 | ReAct + Function Call 双引擎 |
@@ -309,7 +309,7 @@ python -c "from 模块.效果评估 import get_evaluator; print(get_evaluator().
 
 ## 八、效果评估
 
-### 测试集（6 条）
+### 测试集（16 条）
 
 | ID | 类别 | 测试 Query | 期望工具 |
 |----|------|-----------|----------|

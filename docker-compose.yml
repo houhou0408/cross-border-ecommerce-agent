@@ -53,6 +53,13 @@ services:
         required: false   # 无 .env 也可启动（LLM 功能降级），配置后可启用完整能力
     ports:
       - "${APP_PORT:-8000}:8000"
+    # 服务健康探针：uvicorn 启动失败/假死时 compose 可感知（/health 在鉴权白名单内）
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 90s   # 首次启动可能要下载 embedding 模型
     volumes:
       # 持久化向量库、上传素材、日志、用户数据，避免重建容器丢失
       - chroma_data:/app/向量库存储
