@@ -8,18 +8,18 @@
 4. FastAPI 集成：提供 get_current_user 依赖，业务接口用 Depends() 保护；
 5. 安全性：密码加盐哈希存储，token 有时效，不支持明文密码比对。
 """
-import os
 import json
 import time
 import uuid
 import hashlib
 import secrets
+import threading
+from collections import deque
 from pathlib import Path
 from typing import Optional, Dict, Any
 
 from config import AUTH_CONFIG, DATA_DIR
-from 工具集.数据库连接 import get_cursor, is_db_available
-from 模块.日志统计 import get_file_logger
+from 基础设施.日志统计 import get_file_logger
 logger = get_file_logger("用户认证")
 
 # 确保数据目录存在
@@ -31,6 +31,36 @@ _TOKEN_EXPIRE = AUTH_CONFIG["token_expire_hours"] * 3600  # 转秒
 
 # 迭代次数（pbkdf2）
 _PBKDF2_ITERATIONS = 100000
+
+# ============ 登录限速（防暴力破解 / 用户名枚举） ============
+# 同一用户名在窗口期内连续失败达上限后拒绝登录；进程内计数（多实例部署需换 Redis）
+_LOGIN_WINDOW_SEC = 15 * 60
+_LOGIN_MAX_FAILS = 5
+_login_fails: Dict[str, deque] = {}
+_login_lock = threading.Lock()
+
+
+def _login_recent_fails(username: str) -> int:
+    """读取该用户名窗口期内的失败次数（顺手清理过期项，防内存膨胀）。"""
+    now = time.time()
+    with _login_lock:
+        q = _login_fails.get(username)
+        if not q:
+            return 0
+        while q and now - q[0] > _LOGIN_WINDOW_SEC:
+            q.popleft()
+        if not q:
+            _login_fails.pop(username, None)
+            return 0
+        if len(_login_fails) > 10000:  # 全局规模兜底：清掉空账号
+            for k in [k for k, v in _login_fails.items() if not v]:
+                _login_fails.pop(k, None)
+        return len(q)
+
+
+def _record_login_failure(username: str):
+    with _login_lock:
+        _login_fails.setdefault(username, deque()).append(time.time())
 
 
 # ============ 密码哈希（标准库 pbkdf2_hmac，无外部依赖） ============
@@ -135,19 +165,32 @@ def register(username: str, password: str) -> Dict[str, Any]:
 def login(username: str, password: str) -> Dict[str, Any]:
     """用户登录，返回 token。
 
+    安全设计：
+    - 同一用户名 15 分钟内连续失败 5 次后拒绝（防暴力破解）；
+    - "用户名不存在"与"密码错误"统一返回同一提示（防用户名枚举）。
+
     Returns:
         成功: {"ok": True, "token": "...", "user": {...}}
         失败: {"ok": False, "error": "..."}
     """
     username = (username or "").strip()
+
+    if _login_recent_fails(username) >= _LOGIN_MAX_FAILS:
+        logger.warning("[认证] 登录失败次数过多，临时锁定: %s", username)
+        return {"ok": False, "error": "尝试次数过多，请 15 分钟后重试", "rate_limited": True}
+
     users = _load_users()
     user = users.get(username)
+    password_ok = bool(user) and _verify_password(password, user.get("password_hash", ""))
 
-    if not user:
-        return {"ok": False, "error": "用户名不存在"}
+    if not password_ok:
+        # 用户不存在与密码错误同响应：不暴露用户名是否存在
+        _record_login_failure(username)
+        return {"ok": False, "error": "用户名或密码错误"}
 
-    if not _verify_password(password, user.get("password_hash", "")):
-        return {"ok": False, "error": "密码错误"}
+    # 登录成功，清零该用户失败计数
+    with _login_lock:
+        _login_fails.pop(username, None)
 
     # 生成 token
     token = secrets.token_urlsafe(32)
@@ -241,7 +284,6 @@ _PUBLIC_PATHS = {
     "/favicon.ico",
     "/auth/login",      # 登录/注册本身
     "/auth/register",
-    "/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect",  # API 文档
 }
 
 # 无需登录的前缀（静态资源；StaticFiles Mount 天然不走全局依赖，此处兜底）

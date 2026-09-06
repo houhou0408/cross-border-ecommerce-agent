@@ -16,14 +16,12 @@
 对应 JD 职责"客服流程/工单系统"与"面向用户的服务体验"。
 """
 import re
-import time
 from typing import Dict, Any, List, Optional
 
-from config import KNOWLEDGE_DIR
 from 模块.大模型客户端 import get_chat_model
 from 模块.幻觉治理 import get_guard
 from 模块.反馈闭环 import record_feedback
-from 模块.日志统计 import get_file_logger
+from 基础设施.日志统计 import get_file_logger
 logger = get_file_logger("智能客服")
 
 

@@ -20,9 +20,8 @@ from typing import Dict, Any, Optional, List
 
 import requests
 
-from config import LOG_DIR
-from 工具集.数据库连接 import get_cursor
-from 模块.日志统计 import get_file_logger
+from 基础设施.数据库连接 import get_cursor
+from 基础设施.日志统计 import get_file_logger
 logger = get_file_logger("数据采集")
 
 # ============ 缓存 ============
@@ -117,12 +116,9 @@ def _fetch_rates_from_api() -> Optional[Dict[str, float]]:
             r = requests.get(url, timeout=10)
             if r.status_code == 200:
                 data = r.json()
-                # open.er-api.com 格式
+                # open.er-api.com / frankfurter 均以 rates 字段返回汇率字典
                 if "rates" in data:
                     logger.info("[数据采集] 汇率采集成功 (source=%s)", url)
-                    return {k: float(v) for k, v in data["rates"].items()}
-                # frankfurter 格式
-                if "rates" in data:
                     return {k: float(v) for k, v in data["rates"].items()}
         except Exception as e:
             logger.warning("[数据采集] 汇率 API 异常 (%s): %s", url, e)

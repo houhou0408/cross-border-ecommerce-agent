@@ -10,19 +10,18 @@
 
 对应业务场景：跨境电商 Listing 主图、A+ 内容素材、社交媒体推广图、详情页长图。
 """
-import os
 import time
 import uuid
 import json
-from pathlib import Path
 from typing import Dict, Any, Optional, List
 
 import requests
 
 from config import LOG_DIR, IMAGE_T2I_CONFIG, IMAGE_TEMPLATES, _SCENE_MAP
 from 工具集.视频生成 import _save_upload_image, UPLOAD_DIR
-from 工具集.数据库连接 import get_cursor
-from 模块.日志统计 import get_file_logger
+from 基础设施.文件安全 import safe_resolve_upload_path
+from 基础设施.数据库连接 import get_cursor
+from 基础设施.日志统计 import get_file_logger
 logger = get_file_logger("卖点图生成")
 
 # 卖点图任务存储
@@ -52,7 +51,7 @@ _MODEL = IMAGE_T2I_CONFIG.get("model", "wanx2.1-t2i-turbo")
 
 def _create_task_record(product: str, features: str, image_url: str) -> Dict[str, Any]:
     """创建卖点图生成任务记录（自动从请求上下文取当前用户，做数据归属）。"""
-    from 工具集.用户认证 import get_current_user_ctx
+    from 基础设施.用户认证 import get_current_user_ctx
     user = get_current_user_ctx() or {}
     task_id = uuid.uuid4().hex[:12]
     task = {
@@ -188,11 +187,14 @@ def _load_tasks() -> Dict[str, Dict]:
 # ============ 通义万相 T2I API 调用 ============
 
 def _image_to_base64_url(image_path: str) -> Optional[str]:
-    """把本地图片转为 data:image/xxx;base64,... 格式，供 wan2.7-image 图生图参考。"""
+    """把本地图片转为 data:image/xxx;base64,... 格式，供 wan2.7-image 图生图参考。
+
+    路径安全约束：仅允许 /uploads/ 静态目录内的文件（防任意文件读取）。
+    """
     try:
-        local_path = UPLOAD_DIR / image_path.replace("/uploads/", "")
-        if not local_path.exists():
-            logger.warning("[卖点图] 参考图不存在: %s", local_path)
+        local_path = safe_resolve_upload_path(image_path)
+        if not local_path or not local_path.is_file():
+            logger.warning("[卖点图] 参考图不存在或路径不合法: %s", image_path)
             return None
         ext = local_path.suffix.lower().lstrip(".")
         mime = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "webp": "webp", "bmp": "bmp"}.get(ext, "png")
@@ -591,7 +593,7 @@ def 生成卖点图(product: str, features: str = "", image_path: str = "",
     if image_path:
         lines = ["商品卖点图已生成（基于您上传的商品参考图）。"]
     else:
-        lines = [f"商品卖点图已生成。", f"商品描述：{product}"]
+        lines = ["商品卖点图已生成。", f"商品描述：{product}"]
     if features:
         lines.append(f"产品卖点：{features}")
     lines.append("")

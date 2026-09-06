@@ -9,8 +9,6 @@
 """
 import sys
 import os
-import json
-import time
 from pathlib import Path
 from datetime import datetime
 
@@ -43,7 +41,7 @@ class TestRunner:
         try:
             fn(self)
             self.passed += 1
-            self._log(f"  -> PASS")
+            self._log("  -> PASS")
         except AssertionError as e:
             self.failed += 1
             self._log(f"  -> FAIL: {e}")
@@ -98,7 +96,7 @@ def test_关税计算(t: TestRunner):
     from 工具集.关税查询 import 查询关税
     text = 查询关税.invoke({"目的国": "美国", "商品类别": "服装", "货值": 1000, "运费": 50, "保险费": 10})
     assert "应缴关税" in text, "应缴关税计算缺失"
-    t._log(f"  计算结果含应缴关税")
+    t._log("  计算结果含应缴关税")
 
 
 def test_汇率换算(t: TestRunner):
@@ -135,7 +133,7 @@ def test_幻觉治理_绝对化词(t: TestRunner):
 
 
 def test_数据库降级(t: TestRunner):
-    from 工具集.数据库连接 import get_cursor
+    from 基础设施.数据库连接 import get_cursor
     with get_cursor() as cur:
         status = "可用" if cur is not None else "降级(使用内置数据)"
     t._log(f"  数据库状态: {status}")

@@ -15,6 +15,9 @@
 """
 import sys
 import time
+import json
+import asyncio
+import threading
 from pathlib import Path
 
 # 确保项目根目录在 sys.path（兼容直接运行）
@@ -27,25 +30,41 @@ if _libs_dir.exists():
     sys.path.insert(0, str(_libs_dir))
 
 from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from 模块.Agent调度 import get_agent
-from 模块.日志统计 import get_logger
+from 基础设施.日志统计 import get_logger
 from 模块.记忆模块 import get_memory
 from 模块.切片向量化 import add_documents, list_documents, delete_document
 from 模块.效果评估 import get_evaluator, TEST_SET
 from 工具集.关税查询 import 查询关税
 from 工具集.汇率转换 import 汇率换算
 from 工具集.Listing生成 import 生成产品Listing
-from 工具集.视频生成 import generate_video_task, generate_text_video_task, list_video_tasks, get_video_task, delete_video_task
+from 工具集.视频生成 import (
+    start_video_task_async,
+    start_text_video_task_async,
+    list_video_tasks,
+    get_video_task,
+    delete_video_task,
+)
 from 工具集.卖点图生成 import generate_selling_images, list_image_tasks, get_image_task, delete_image_task
-from 工具集.用户认证 import register, login, logout, get_user_by_token, get_current_user, require_user
+from 基础设施.文件安全 import validate_image_upload
+from 基础设施.用户认证 import register, login, logout, get_current_user, require_user
 
-# 全局强制鉴权：白名单（前端页/健康检查/登录注册/文档/静态资源）放行，
-# 其余全部路由必须携带有效 Bearer token（详见 用户认证.require_user）
-app = FastAPI(title="跨境电商 AI Agent", version="1.0.0", dependencies=[Depends(require_user)])
+# 全局强制鉴权：白名单（前端页/健康检查/登录注册/静态资源）放行，
+# 其余全部路由必须携带有效 Bearer token（详见 用户认证.require_user）。
+# 注意：/docs 等文档路由是 FastAPI 特殊路由，不走路由级依赖、无法被全局依赖保护，
+# 因此直接关闭（安全整改：避免向未认证方暴露完整路由结构）。
+app = FastAPI(
+    title="跨境电商 AI Agent",
+    version="1.0.0",
+    dependencies=[Depends(require_user)],
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 
 # 前端目录：优先用 React 构建产物（前端/dist），未构建时回退到原 index.html
 _FRONTEND_ROOT = Path(__file__).resolve().parent.parent / "前端"
@@ -135,7 +154,7 @@ def health():
     - status: ok=全部就绪；degraded=部分组件不可用（服务仍可用，走降级链）。
     """
     from config import CHROMA_DIR, LLM_CONFIG, VIDEO_CONFIG
-    from 工具集.数据库连接 import is_db_available
+    from 基础设施.数据库连接 import is_db_available
 
     llm_key = (LLM_CONFIG.get("api_key") or "").strip()
     dashscope_key = (VIDEO_CONFIG.get("api_key") or "").strip()
@@ -187,6 +206,20 @@ def auth_me(user: dict = Depends(get_current_user)):
     return {"ok": True, "user": {"id": user["id"], "username": user["username"]}}
 
 
+def _owned_session(session_id: str | None, user_id: str):
+    """校验会话归属：存在且属于该用户返回会话 dict，否则返回 None。
+
+    所有带 session_id 的端点统一用此函数做归属校验（此前在 5 处重复手写，
+    存在口径漂移风险）。
+    """
+    if not session_id:
+        return None
+    sess = get_memory().get_session(session_id)
+    if not sess or sess.get("user_id") != user_id:
+        return None
+    return sess
+
+
 @app.post("/ask")
 def ask(req: AskRequest, user: dict = Depends(get_current_user)):
     """Agent 多任务问答主接口（支持多轮对话记忆，会话按用户隔离）。
@@ -202,8 +235,7 @@ def ask(req: AskRequest, user: dict = Depends(get_current_user)):
 
     # 会话管理：无 session_id 则新建（归属当前用户）；传入他人会话则拒绝
     if req.session_id:
-        sess = memory.get_session(req.session_id)
-        if not sess or sess.get("user_id") != user["id"]:
+        if not _owned_session(req.session_id, user["id"]):
             return {"error": "会话不存在或无权访问", "session_id": req.session_id}
         session_id = req.session_id
     else:
@@ -235,6 +267,81 @@ def ask(req: AskRequest, user: dict = Depends(get_current_user)):
     return result
 
 
+@app.post("/ask/stream")
+async def ask_stream(req: AskRequest, user: dict = Depends(get_current_user)):
+    """Agent 问答流式接口（SSE）：阶段性事件 + 最终结果。
+
+    事件格式（text/event-stream，data 行为 JSON）：
+        {"type": "stage", "msg": "调用工具 query_tariff …"}   阶段进度
+        {"type": "result", ...与 /ask 完全相同的响应字段...}    最终结果
+        {"type": "error", "error": "..."}                      服务端异常
+    会话校验/记忆写回与 /ask 完全一致；原 /ask 非流式接口保留（降级/兼容）。
+    """
+    memory = get_memory()
+    agent = get_agent()
+
+    # 会话归属校验与 /ask 相同（未通过时返回普通 JSON 错误响应）
+    if req.session_id:
+        if not _owned_session(req.session_id, user["id"]):
+            return {"error": "会话不存在或无权访问", "session_id": req.session_id}
+        session_id = req.session_id
+    else:
+        session_id = memory.create_session(user_id=user["id"])["id"]
+
+    effective_query = req.query
+    if req.image_path:
+        effective_query = f"【用户已上传商品图片：{req.image_path}】\n用户问题：{req.query}"
+
+    loop = asyncio.get_event_loop()
+    q: asyncio.Queue = asyncio.Queue()
+
+    def _on_event(msg: str):
+        # orchestrate 运行在工作线程，事件经线程安全方式投递到事件循环
+        loop.call_soon_threadsafe(q.put_nowait, {"type": "stage", "msg": msg})
+
+    def _worker():
+        try:
+            history = memory.get_history(session_id)
+            chat_history = memory.to_langchain_messages(history)
+            result = agent.orchestrate(
+                effective_query,
+                chat_history=chat_history,
+                session_id=session_id,
+                on_event=_on_event,
+            )
+            result["session_id"] = session_id
+            # 写回记忆（与 /ask 一致：user + assistant）
+            memory.add_message(session_id, "user", req.query)
+            memory.add_message(session_id, "assistant", result.get("answer", ""), {
+                "tools_used": result.get("tools_used", []),
+                "grounded": result.get("grounded"),
+                "score": result.get("score"),
+                "latency_ms": result.get("latency_ms"),
+            })
+        except Exception as e:  # noqa: BLE001
+            loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "error": str(e)[:200]})
+        else:
+            loop.call_soon_threadsafe(q.put_nowait, {"type": "result", **result})
+
+    async def event_gen():
+        yield 'data: ' + json.dumps({'type': 'stage', 'msg': '任务已接收，Agent 开始推理…'}, ensure_ascii=False) + '\n\n'
+        threading.Thread(target=_worker, daemon=True, name="ask-stream-worker").start()
+        while True:
+            try:
+                item = await asyncio.wait_for(q.get(), timeout=15.0)
+                yield 'data: ' + json.dumps(item, ensure_ascii=False) + '\n\n'
+                if item.get("type") in ("result", "error"):
+                    break
+            except asyncio.TimeoutError:
+                yield 'data: ' + json.dumps({'type': 'stage', 'msg': '仍在推理中…'}, ensure_ascii=False) + '\n\n'
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @app.post("/chat/upload-image")
 async def chat_upload_image(file: UploadFile = File(...)):
     """对话页上传商品图片：保存后返回 image_path，供 /ask 调用时携带。
@@ -245,9 +352,10 @@ async def chat_upload_image(file: UploadFile = File(...)):
     if not file.content_type or not file.content_type.startswith("image/"):
         return {"error": "仅支持图片文件"}
     data = await file.read()
-    if not data:
-        return {"error": "图片内容为空"}
-    image_path = _save_upload_image(data, file.filename or "chat_image.jpg")
+    try:
+        image_path = _save_upload_image(data, file.filename or "chat_image.jpg")
+    except ValueError as e:
+        return {"error": str(e)}
     return {"image_path": image_path, "url": image_path}
 
 
@@ -267,8 +375,8 @@ def create_session(user: dict = Depends(get_current_user)):
 @app.get("/sessions/{session_id}")
 def get_session(session_id: str, user: dict = Depends(get_current_user)):
     """获取会话详情（含消息历史，验证归属）。"""
-    sess = get_memory().get_session(session_id)
-    if not sess or sess.get("user_id") != user["id"]:
+    sess = _owned_session(session_id, user["id"])
+    if not sess:
         raise HTTPException(status_code=404, detail="会话不存在")
     return sess
 
@@ -400,12 +508,15 @@ async def video_generate(file: UploadFile = File(...), prompt: str = Form("")):
     未配置 VIDEO_API_KEY 时返回示例视频（降级，保证可演示）。
     """
     img_bytes = await file.read()
-    result = generate_video_task(
+    ok, err = validate_image_upload(img_bytes, file.filename or "product.jpg")
+    if not ok:
+        return {"error": err}
+    # 异步提交：立即返回 task_id，后台线程完成生成（前端轮询 /video/tasks/{id}）
+    return start_video_task_async(
         prompt=prompt or "产品宣传视频",
         image_bytes=img_bytes,
         filename=file.filename or "product.jpg",
     )
-    return result
 
 
 @app.get("/video/tasks")
@@ -425,7 +536,8 @@ def video_text_to_video(req: TextVideoRequest):
     无需图片，仅凭文字描述生成视频。
     未配置 VIDEO_API_KEY 时返回示例视频（降级，保证可演示）。
     """
-    return generate_text_video_task(prompt=req.prompt)
+    # 异步提交：立即返回 task_id，后台线程完成生成
+    return start_text_video_task_async(prompt=req.prompt)
 
 
 @app.get("/video/tasks/{task_id}")
@@ -459,6 +571,9 @@ async def image_generate_batch(
     生成类型：白底主图 / 场景应用图 / 卖点标注图 / 详情长图
     """
     img_bytes = await file.read()
+    ok, err = validate_image_upload(img_bytes, file.filename or "product.jpg")
+    if not ok:
+        return {"error": err}
     result = generate_selling_images(
         product=product or "产品",
         features=features,
@@ -521,8 +636,7 @@ def support_ask(req: SupportRequest, user: dict = Depends(get_current_user)):
 
     # 会话管理：无 session_id 则新建（归属当前用户）；传入他人会话则拒绝
     if req.session_id:
-        sess = memory.get_session(req.session_id)
-        if not sess or sess.get("user_id") != user["id"]:
+        if not _owned_session(req.session_id, user["id"]):
             return {"error": "会话不存在或无权访问", "session_id": req.session_id}
         sid = req.session_id
     else:
@@ -567,10 +681,8 @@ def support_transfer(req: SupportTransferRequest, user: dict = Depends(get_curre
     from 模块.智能客服 import build_transfer_summary
 
     sid = req.session_id if req.session_id else ""
-    if sid:
-        sess = get_memory().get_session(sid)
-        if not sess or sess.get("user_id") != user["id"]:
-            return {"ok": False, "error": "会话不存在或无权访问"}
+    if sid and not _owned_session(sid, user["id"]):
+        return {"ok": False, "error": "会话不存在或无权访问"}
     history = get_memory().get_history(sid, max_turns=10) if sid else []
     summary = build_transfer_summary(history)
     return {
@@ -584,8 +696,8 @@ def support_transfer(req: SupportTransferRequest, user: dict = Depends(get_curre
 @app.get("/support/sessions/{session_id}")
 def support_session(session_id: str, user: dict = Depends(get_current_user)):
     """获取客服会话详情（含历史消息，验证归属）。"""
-    sess = get_memory().get_session(session_id)
-    if not sess or sess.get("user_id") != user["id"]:
+    sess = _owned_session(session_id, user["id"])
+    if not sess:
         return {"error": "会话不存在"}
     return sess
 

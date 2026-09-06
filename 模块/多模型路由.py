@@ -10,7 +10,6 @@
 面试话术："不是所有任务都用最好的模型，铺货型走轻量模型控成本，精品型走高质量模型保转化。"
 """
 import os
-import re
 from typing import Optional
 
 from config import LLM_CONFIG as _LLM

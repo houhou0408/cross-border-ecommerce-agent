@@ -10,13 +10,12 @@
 """
 import json
 import time
-from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from dataclasses import dataclass, field
 
 from config import DATA_DIR
 from langchain_core.tools import tool
-from 模块.日志统计 import get_file_logger
+from 基础设施.日志统计 import get_file_logger
 logger = get_file_logger("反馈闭环")
 
 
@@ -147,7 +146,7 @@ def 记录反馈(query: str, answer: str, rating: str = "good", comment: str = "
     import re
     # 清理 query 中的前缀标记（如 [feedback] 前缀）
     clean_query = re.sub(r'^\[.*?\]\s*', '', query)
-    result = record_feedback(clean_query, answer, rating, comment, issue_type)
+    record_feedback(clean_query, answer, rating, comment, issue_type)
     if rating == "bad":
         return (
             f"反馈已记录。感谢您的反馈，我们会根据此案例优化系统。\n"
@@ -170,7 +169,7 @@ def 查看反馈统计() -> str:
     suggs = generate_improvement_suggestions()
 
     lines = [
-        f"=== 系统反馈统计 ===",
+        "=== 系统反馈统计 ===",
         f"总反馈: {stats.total} 条",
         f"好评: {stats.good} 条 | 差评: {stats.bad} 条",
         f"好评率: {stats.good_rate*100:.0f}%",
@@ -182,7 +181,7 @@ def 查看反馈统计() -> str:
         for s in suggs:
             lines.append(f"  - {s}")
     if stats.recent:
-        lines.append(f"\n最近反馈:")
+        lines.append("\n最近反馈:")
         for r in stats.recent[-5:]:
             emoji = "👍" if r.get("rating") == "good" else "👎"
             lines.append(f"  {emoji} [{r['time']}] {r.get('comment','')[:30] or r.get('issue_type','')}")

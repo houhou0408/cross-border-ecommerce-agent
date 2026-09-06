@@ -9,7 +9,7 @@
 5. ReAct 商业研判报告：输出完整市场大盘+竞品优劣势+改款建议+风险+四级开发建议。
 """
 import time
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 
 from langchain_core.tools import tool
 

@@ -8,22 +8,26 @@
 """
 import json
 import logging
+from collections import deque
 from datetime import datetime
+from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 
 from config import LOG_DIR
-from 工具集.数据库连接 import get_cursor
+from 基础设施.数据库连接 import get_cursor
 
 
 def _setup_file_logger() -> logging.Logger:
-    """配置文件日志。"""
+    """配置文件日志（按天滚动，保留 14 天，防单文件无限膨胀）。"""
     logger = logging.getLogger("跨境Agent")
     if logger.handlers:
         return logger
     logger.setLevel(logging.INFO)
     log_file = LOG_DIR / f"agent_{datetime.now().strftime('%Y%m%d')}.log"
-    fh = logging.FileHandler(log_file, encoding="utf-8")
+    fh = TimedRotatingFileHandler(
+        log_file, when="midnight", backupCount=14, encoding="utf-8"
+    )
     fh.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
     logger.addHandler(fh)
     # 同时输出到控制台
@@ -56,7 +60,8 @@ class 日志统计器:
 
     def __init__(self):
         self.logger = _setup_file_logger()
-        self._mem_buffer: List[Dict[str, Any]] = []  # 库不可用时的内存缓冲
+        # 库不可用时的内存缓冲：定长队列，防长期运行内存无限增长
+        self._mem_buffer: deque = deque(maxlen=2000)
 
     def log_query(self, payload: Dict[str, Any]):
         """记录一次 Agent 调用。
@@ -140,7 +145,7 @@ class 日志统计器:
         """把内存缓冲导出为 JSON（便于生成测试日志）。"""
         path = path or (LOG_DIR / "调用记录.json")
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(self._mem_buffer, f, ensure_ascii=False, indent=2)
+            json.dump(list(self._mem_buffer), f, ensure_ascii=False, indent=2)
         self.logger.info("[日志统计] 已导出调用记录 -> %s", path)
 
 

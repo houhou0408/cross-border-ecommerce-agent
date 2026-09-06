@@ -15,7 +15,7 @@
 """
 from langchain_core.tools import tool
 
-from 工具集.数据库连接 import get_cursor
+from 基础设施.数据库连接 import get_cursor
 
 # ============ 官方关税税率表 ============
 # 来源：USITC HTS 2025 / EU TARIC / Japan Customs 官网公开发布

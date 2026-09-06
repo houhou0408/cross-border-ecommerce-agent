@@ -10,15 +10,14 @@
 6. 店铺风格复刻：可导入公司历史爆款 Listing，复刻画风和卖点逻辑。
 """
 import json
-import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 from langchain_core.tools import tool
 from langchain_core.prompts import ChatPromptTemplate
 
 from 模块.大模型客户端 import get_chat_model
 from 模块.检索器 import 检索器
-from 工具集.数据库连接 import get_cursor
+from 基础设施.数据库连接 import get_cursor
 
 # ============ 平台规则 ============
 PLATFORM_RULES = {

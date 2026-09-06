@@ -83,16 +83,28 @@ class Test登录与Token:
         assert len(r["token"]) >= 32
         assert r["user"]["username"] == "alice"
 
-    def test_密码错误(self, tmp_auth_files):
+    def test_密码错误_不泄露用户名是否存在(self, tmp_auth_files):
         self._setup_user(tmp_auth_files)
         r = tmp_auth_files.login("alice", "wrong66")
         assert r["ok"] is False
-        assert "密码错误" in r["error"]
+        # 防用户名枚举：用户不存在与密码错误统一提示
+        assert "用户名或密码错误" in r["error"]
 
-    def test_用户名不存在(self, tmp_auth_files):
+    def test_用户名不存在_与密码错误同响应(self, tmp_auth_files):
         r = tmp_auth_files.login("nobody", "pass123")
         assert r["ok"] is False
-        assert "不存在" in r["error"]
+        assert "用户名或密码错误" in r["error"]
+
+    def test_连续失败触发限速(self, tmp_auth_files, monkeypatch):
+        import 基础设施.用户认证 as auth
+        self._setup_user(tmp_auth_files)
+        # 清空限速计数，保证用例独立
+        monkeypatch.setattr(auth, "_login_fails", {})
+        for _ in range(5):
+            auth.login("alice", "bad-pass")
+        r = auth.login("alice", "pass123")  # 即使密码正确也应被锁
+        assert r["ok"] is False
+        assert r.get("rate_limited") is True
 
     def test_两次登录token不同(self, tmp_auth_files):
         self._setup_user(tmp_auth_files)

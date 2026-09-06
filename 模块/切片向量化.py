@@ -14,7 +14,7 @@ from langchain_core.embeddings import Embeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from config import EMBEDDING_CONFIG, CHROMA_CONFIG, RETRIEVAL_CONFIG
-from 模块.日志统计 import get_file_logger
+from 基础设施.日志统计 import get_file_logger
 logger = get_file_logger("切片向量化")
 
 # 全局缓存，避免重复加载模型（embedding 模型加载较慢）

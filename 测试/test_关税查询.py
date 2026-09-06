@@ -7,7 +7,6 @@
 3. de minimis 免税额度内免征，超出按 CIF 计征；
 4. MySQL 缓存优先于内置表，DB 不可用时静默降级到内置表。
 """
-import pytest
 
 from 工具集.关税查询 import 查询关税, TARIFF_DB, DE_MINIMIS
 

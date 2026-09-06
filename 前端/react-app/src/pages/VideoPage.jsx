@@ -75,6 +75,18 @@ export default function VideoPage() {
     }
   }
 
+  // 视频任务已改为异步：提交立即返回 task_id，后台生成，此处轮询直到完成
+  const pollVideoTask = async (taskId) => {
+    const maxTry = 100 // 4s × 100 ≈ 6.7 分钟
+    for (let i = 0; i < maxTry; i++) {
+      const t = await api.getVideoTask(taskId)
+      if (t && t.status === 'completed') return t
+      if (t && t.error) throw new Error(t.error)
+      await new Promise((r) => setTimeout(r, 4000))
+    }
+    throw new Error('等待超时，请稍后在生成历史中查看结果')
+  }
+
   const onGenerate = async () => {
     if (mode === 'r2v' && !file) {
       notify('请先上传商品图片')
@@ -105,11 +117,20 @@ export default function VideoPage() {
       }
       if (d.error) {
         notify('生成失败：' + d.error)
-      } else {
-        setResult(d)
-        notify(mode === 'r2v' ? '视频已生成' : (mode === 't2v' ? '文生视频已生成' : '卖点图已生成'))
-        loadHistory()
+        return
       }
+      if (mode === 'sell') {
+        setResult(d)
+        notify('卖点图已生成')
+        loadHistory()
+        return
+      }
+      // 视频模式：异步任务 → 轮询直到完成
+      notify('任务已提交，后台生成中…')
+      const fin = await pollVideoTask(d.task_id)
+      setResult(fin)
+      notify(mode === 'r2v' ? '视频已生成' : '文生视频已生成')
+      loadHistory()
     } catch (e) {
       notify('生成失败：' + e.message)
     } finally {
@@ -274,7 +295,7 @@ export default function VideoPage() {
                 onClick={onGenerate}
                 disabled={!canGenerate}
               >
-                {generating ? '生成中...' : '生成视频'}
+                {generating ? '后台生成中（约 1-5 分钟）…' : '生成视频'}
               </button>
               {(file || prompt) && !generating && (
                 <button

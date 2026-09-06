@@ -13,12 +13,11 @@
 import json
 import uuid
 from datetime import datetime
-from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 from config import LOG_DIR
-from 工具集.数据库连接 import get_cursor
-from 模块.日志统计 import get_file_logger
+from 基础设施.数据库连接 import get_cursor
+from 基础设施.日志统计 import get_file_logger
 logger = get_file_logger("记忆模块")
 
 # 无 MySQL 时的 JSON 文件降级路径
@@ -134,27 +133,27 @@ class 记忆管理器:
         """
         with get_cursor() as cur:
             if cur is not None:
+                # LEFT JOIN 一次取回会话 + 消息计数（替代逐会话 COUNT 的 N+1 查询）
                 cur.execute(
-                    "SELECT id, title, user_id, created_at, updated_at FROM chat_session "
-                    "WHERE user_id=%s ORDER BY updated_at DESC",
+                    "SELECT s.id, s.title, s.user_id, s.created_at, s.updated_at, "
+                    "COUNT(m.id) AS cnt FROM chat_session s "
+                    "LEFT JOIN chat_message m ON m.session_id = s.id "
+                    "WHERE s.user_id=%s "
+                    "GROUP BY s.id, s.title, s.user_id, s.created_at, s.updated_at "
+                    "ORDER BY s.updated_at DESC",
                     (user_id,),
                 )
                 rows = cur.fetchall()
-                # 统计每个会话消息数
-                result = []
-                for r in rows:
-                    cur.execute(
-                        "SELECT COUNT(*) AS cnt FROM chat_message WHERE session_id=%s", (r["id"],)
-                    )
-                    cnt = cur.fetchone()
-                    result.append({
+                return [
+                    {
                         "id": r["id"],
                         "title": r["title"],
                         "created_at": str(r["created_at"]),
                         "updated_at": str(r["updated_at"]),
-                        "message_count": cnt["cnt"] if cnt else 0,
-                    })
-                return result
+                        "message_count": r.get("cnt", 0) or 0,
+                    }
+                    for r in rows
+                ]
         # 降级（JSON 同样按归属过滤，遗留无主会话不返回）
         return [
             {

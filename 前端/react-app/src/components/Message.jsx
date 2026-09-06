@@ -12,11 +12,11 @@ export default function Message({ msg }) {
     <div className={`msg ${msg.role}`}>
       <div className="avatar">{isBot ? 'AI' : '我'}</div>
 
-      {/* 思考中占位 */}
+      {/* 思考中占位（stage 有值时展示实时阶段进度） */}
       {msg.thinking ? (
         <div className="bubble thinking-bubble">
           <span className="spinner" />
-          Agent 正在思考并调用工具…
+          {msg.stage || 'Agent 正在思考并调用工具…'}
         </div>
       ) : (
         <div className="bubble-wrap">

@@ -9,18 +9,19 @@
 
 对应业务场景：跨境电商产品主图视频、Listing 宣传视频、社交媒体短视频素材。
 """
-import os
 import time
 import uuid
 import json
+import threading
 from pathlib import Path
 from typing import Dict, Any, Optional
 
 import requests
 
 from config import LOG_DIR, VIDEO_CONFIG, VIDEO_T2V_CONFIG
-from 工具集.数据库连接 import get_cursor
-from 模块.日志统计 import get_file_logger
+from 基础设施.数据库连接 import get_cursor
+from 基础设施.文件安全 import save_upload_image, safe_resolve_upload_path
+from 基础设施.日志统计 import get_file_logger
 logger = get_file_logger("视频生成")
 
 # 视频生成任务存储
@@ -44,18 +45,17 @@ _MODEL = VIDEO_CONFIG.get("model", "happyhorse-i2v")
 
 
 def _save_upload_image(file_bytes: bytes, filename: str) -> str:
-    """保存上传的图片到静态目录，返回相对路径。"""
-    ext = os.path.splitext(filename)[1] or ".jpg"
-    saved_name = f"product_{int(time.time())}_{uuid.uuid4().hex[:6]}{ext}"
-    save_path = UPLOAD_DIR / saved_name
-    with open(save_path, "wb") as f:
-        f.write(file_bytes)
-    return f"/uploads/{saved_name}"
+    """保存上传的图片到静态目录，返回相对路径。
+
+    统一走 文件安全.save_upload_image：扩展名白名单 + 魔数 + 大小上限校验，
+    不合法抛 ValueError（HTTP 层捕获转业务错误）。
+    """
+    return save_upload_image(file_bytes, filename, upload_dir=UPLOAD_DIR)
 
 
 def _create_task_record(prompt: str, image_url: str, status: str = "processing") -> Dict[str, Any]:
     """创建视频生成任务记录（自动从请求上下文取当前用户，做数据归属）。"""
-    from 工具集.用户认证 import get_current_user_ctx
+    from 基础设施.用户认证 import get_current_user_ctx
     user = get_current_user_ctx() or {}
     task_id = uuid.uuid4().hex[:12]
     task = {
@@ -191,15 +191,11 @@ def _upload_image_to_dashscope(image_path: str) -> Optional[str]:
     HappyHorse R2V 需要图片是公网可访问 URL。
     使用 DashScope SDK 的 OssUtils 上传到 OSS，返回 oss:// 协议 URL。
     调用视频生成 API 时需附带 X-DashScope-OssResourceResolve: enable 头。
+    路径安全约束：仅允许 /uploads/ 静态目录内的文件（防任意文件读取/外传）。
     """
-    # 拼接本地完整路径
-    if image_path.startswith("/uploads/"):
-        local_path = UPLOAD_DIR / image_path.replace("/uploads/", "")
-    else:
-        local_path = Path(image_path)
-
-    if not local_path.exists():
-        logger.warning("[视频生成] 图片不存在: %s", local_path)
+    local_path = safe_resolve_upload_path(image_path)
+    if not local_path or not local_path.is_file():
+        logger.warning("[视频生成] 图片不存在或路径不合法: %s", image_path)
         return None
 
     try:
@@ -344,6 +340,131 @@ def _do_fallback(prompt: str, image_path: str, reason: str = "") -> Dict[str, An
         "prompt": prompt,
         "used_fallback": True,
         "msg": f"视频已生成（示例视频{reason}）",
+    }
+
+
+# ============ 异步任务提交（真异步：不阻塞请求 worker） ============
+
+def _mark_task_completed(task_id: str, video_url: str, used_fallback: bool):
+    """把任务标记为完成（真实/降级）。任务不存在（已被删除）时静默跳过。"""
+    tasks = _load_tasks()
+    task = tasks.get(task_id)
+    if not task:
+        return
+    task["video_url"] = video_url
+    task["status"] = "completed"
+    task["completed_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    task["used_fallback"] = used_fallback
+    _save_task(task)
+
+
+def _process_video_task(task_id: str, prompt: str, image_path: str):
+    """后台线程体：R2V 全流程（上传→创建→轮询→下载）。
+
+    任一步失败自动降级示例视频，保证任务最终收敛到 completed，
+    不会出现永久停留在 processing 的孤儿任务。
+    """
+    try:
+        if not _API_KEY or not image_path:
+            _mark_task_completed(task_id, _FALLBACK_VIDEO, True)
+            return
+        logger.info("[视频生成][后台 %s] 步骤1: 上传图片 %s", task_id, image_path)
+        remote_url = _upload_image_to_dashscope(image_path)
+        if not remote_url:
+            _mark_task_completed(task_id, _FALLBACK_VIDEO, True)
+            return
+        logger.info("[视频生成][后台 %s] 步骤2: 创建 R2V 任务 (model=%s)", task_id, _MODEL)
+        ds_task_id = _create_r2v_task(prompt, remote_url)
+        if not ds_task_id:
+            _mark_task_completed(task_id, _FALLBACK_VIDEO, True)
+            return
+        logger.info("[视频生成][后台 %s] 步骤3: 轮询任务 %s", task_id, ds_task_id)
+        video_url = _poll_task(ds_task_id)
+        if not video_url:
+            _mark_task_completed(task_id, _FALLBACK_VIDEO, True)
+            return
+        logger.info("[视频生成][后台 %s] 步骤4: 下载视频", task_id)
+        local_video = _download_video(video_url)
+        _mark_task_completed(task_id, local_video, False)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[视频生成] 后台任务 %s 异常: %s，降级示例视频", task_id, e)
+        try:
+            _mark_task_completed(task_id, _FALLBACK_VIDEO, True)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def start_video_task_async(prompt: str, image_path: str = "", image_bytes: bytes = None,
+                           filename: str = "") -> Dict[str, Any]:
+    """提交图生视频任务：立即返回 task_id，后台线程完成生成（HTTP 层不阻塞）。
+
+    归属说明：任务记录在提交时同步创建（此时仍在请求上下文内，
+    自动带上当前用户），后台线程只更新已有记录，不再读用户上下文。
+    """
+    if image_bytes and not image_path:
+        image_path = _save_upload_image(image_bytes, filename or "product.jpg")
+    task = _create_task_record(prompt, image_path, "processing")
+    threading.Thread(
+        target=_process_video_task,
+        args=(task["id"], prompt, image_path),
+        daemon=True,
+        name=f"video-task-{task['id']}",
+    ).start()
+    logger.info("[视频生成] 任务已提交后台: %s (user=%s)", task["id"], task.get("username"))
+    return {
+        "task_id": task["id"],
+        "status": "processing",
+        "image_url": image_path,
+        "prompt": prompt,
+        "msg": "任务已提交，后台生成中（约 1-5 分钟），可在生成历史中查看进度",
+    }
+
+
+def _process_text_video_task(task_id: str, prompt: str):
+    """后台线程体：T2V 全流程（创建→轮询→下载），失败降级示例视频。"""
+    try:
+        if not _API_KEY:
+            _mark_task_completed(task_id, _FALLBACK_VIDEO, True)
+            return
+        logger.info("[文生视频][后台 %s] 步骤1: 创建 T2V 任务", task_id)
+        ds_task_id = _create_t2v_task(prompt)
+        if not ds_task_id:
+            _mark_task_completed(task_id, _FALLBACK_VIDEO, True)
+            return
+        logger.info("[文生视频][后台 %s] 步骤2: 轮询任务 %s", task_id, ds_task_id)
+        video_url = _poll_task(ds_task_id)
+        if not video_url:
+            _mark_task_completed(task_id, _FALLBACK_VIDEO, True)
+            return
+        local_video = _download_video(video_url)
+        _mark_task_completed(task_id, local_video, False)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[文生视频] 后台任务 %s 异常: %s，降级示例视频", task_id, e)
+        try:
+            _mark_task_completed(task_id, _FALLBACK_VIDEO, True)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def start_text_video_task_async(prompt: str) -> Dict[str, Any]:
+    """提交文生视频任务：立即返回 task_id，后台线程完成生成。"""
+    task = _create_task_record(prompt, "", "processing")
+    task["mode"] = "t2v"
+    _save_task(task)
+    threading.Thread(
+        target=_process_text_video_task,
+        args=(task["id"], prompt),
+        daemon=True,
+        name=f"video-t2v-{task['id']}",
+    ).start()
+    logger.info("[文生视频] 任务已提交后台: %s (user=%s)", task["id"], task.get("username"))
+    return {
+        "task_id": task["id"],
+        "status": "processing",
+        "image_url": "",
+        "prompt": prompt,
+        "mode": "t2v",
+        "msg": "任务已提交，后台生成中（约 1-5 分钟），可在生成历史中查看进度",
     }
 
 

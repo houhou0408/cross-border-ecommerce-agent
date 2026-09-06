@@ -32,6 +32,7 @@ export default function ChatPage({ onDataChanged, onNewChat, sessionId, onSessio
   const [imagePreview, setImagePreview] = useState(null) // 图片预览 URL
   const [imagePath, setImagePath] = useState(null)       // 上传成功后后端返回的路径
   const [uploading, setUploading] = useState(false)      // 图片上传中
+  const [stageText, setStageText] = useState('')         // 流式阶段进度（工具调用等）
   const [lightbox, setLightbox] = useState(null) // { src, type }
   const boxRef = useRef(null)
   const abortRef = useRef(null)  // 存储当前请求的 AbortController
@@ -136,7 +137,10 @@ export default function ChatPage({ onDataChanged, onNewChat, sessionId, onSessio
     const sendImagePath = imagePath
 
     try {
-      const d = await api.ask(text, sessionId, ctrl.signal, sendImagePath)
+      // 流式接口：实时接收阶段事件（工具调用进度），返回最终结果
+      const d = await api.askStream(text, sessionId, ctrl.signal, sendImagePath, (msg) =>
+        setStageText(msg)
+      )
       // 若后端新建了会话（首次无 sessionId），同步到父组件
       if (!sessionId && d.session_id) {
         onSessionChange()
@@ -153,6 +157,7 @@ export default function ChatPage({ onDataChanged, onNewChat, sessionId, onSessio
       }
     } finally {
       setSending(false)
+      setStageText('')
       abortRef.current = null
       // 发送完成后清空已上传图片
       onRemoveImage()
@@ -219,7 +224,7 @@ export default function ChatPage({ onDataChanged, onNewChat, sessionId, onSessio
         {messages.map((m, i) => (
           <Message key={i} msg={m} />
         ))}
-        {sending && <Message msg={{ role: 'bot', text: '', thinking: true, meta: null }} />}
+        {sending && <Message msg={{ role: 'bot', text: '', stage: stageText, thinking: true, meta: null }} />}
       </div>
 
       <div className="chat-foot">

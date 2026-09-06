@@ -9,7 +9,6 @@
 5. ContextVar 用户上下文：Agent 工具链深处可取当前用户（阶段4数据隔离的基础）。
 """
 import pytest
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from 接口.FastAPI服务 import app
@@ -30,10 +29,16 @@ def _reg_and_login(auth, username="tester", password="pass123"):
 # ============ 白名单：无需登录 ============
 
 class Test白名单放行:
-    @pytest.mark.parametrize("path", ["/", "/health", "/docs", "/redoc", "/openapi.json"])
+    @pytest.mark.parametrize("path", ["/", "/health"])
     def test_公开路径非401(self, client, path):
         r = client.get(path)
         assert r.status_code != 401
+
+    @pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json"])
+    def test_api文档不对外暴露(self, client, path):
+        # 安全整改：接口文档路由已关闭（特殊路由不走路由级依赖，无法用鉴权保护）
+        r = client.get(path)
+        assert r.status_code == 404
 
     def test_注册接口公开(self, client, tmp_auth_files):
         r = client.post("/auth/register", json={"username": "wl_user", "password": "pass123"})
@@ -122,7 +127,7 @@ class Test登录后放行:
 
 class Test用户上下文:
     def test_设置与读取(self):
-        from 工具集.用户认证 import set_current_user, get_current_user_ctx
+        from 基础设施.用户认证 import set_current_user, get_current_user_ctx
         set_current_user({"id": "u1", "username": "alice"})
         assert get_current_user_ctx()["username"] == "alice"
         set_current_user(None)
@@ -130,7 +135,7 @@ class Test用户上下文:
 
     def test_请求内可取用户(self, client, tmp_auth_files):
         # 经真实请求验证：require_user 写入 ContextVar（以 /auth/me 返回用户佐证鉴权链路通）
-        from 工具集.用户认证 import set_current_user, get_current_user_ctx
+        from 基础设施.用户认证 import set_current_user, get_current_user_ctx
         token = _reg_and_login(tmp_auth_files, username="ctx_user")
         r = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
         assert r.status_code == 200

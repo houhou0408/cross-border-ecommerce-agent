@@ -26,7 +26,7 @@ except ImportError:
 
 from config import RETRIEVAL_CONFIG
 from 模块.切片向量化 import load_vectorstore
-from 模块.日志统计 import get_file_logger
+from 基础设施.日志统计 import get_file_logger
 logger = get_file_logger("检索器")
 
 

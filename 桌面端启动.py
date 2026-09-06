@@ -72,7 +72,7 @@ def main():
         sys.exit(1)
 
     print(f"[桌面端] 后端就绪: {base_url}")
-    window = webview.create_window(
+    _window = webview.create_window(
         "跨境电商 AI 助手",
         f"{base_url}/",
         width=1360,

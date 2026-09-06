@@ -21,7 +21,7 @@ if _libs_dir.exists():
     sys.path.insert(0, str(_libs_dir))
 
 from 模块.Agent调度 import get_agent
-from 模块.日志统计 import get_logger
+from 基础设施.日志统计 import get_logger
 from 工具集.关税查询 import 查询关税
 from 工具集.汇率转换 import 汇率换算
 from 工具集.Listing生成 import 生成产品Listing

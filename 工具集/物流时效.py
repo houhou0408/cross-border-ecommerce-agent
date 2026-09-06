@@ -10,18 +10,14 @@
 
 FBX 不是单一船司报价，而是市场均价——面试时讲清楚"运价指数 vs 实际报价"的差异。
 """
-import re
 import time
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 import requests
-import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from langchain_core.tools import tool
 
-from config import LOG_DIR
-from 模块.日志统计 import get_file_logger
+from 基础设施.日志统计 import get_file_logger
 logger = get_file_logger("物流时效")
 
 # ============ Freightos FBX 实时运价指数 ============
@@ -67,7 +63,7 @@ def _fetch_fbx_indices() -> Dict[str, Any]:
     try:
         r = requests.get(
             "https://www.freightos.com/freight-resources/freightos-baltic-index/",
-            timeout=8, verify=False,
+            timeout=8,
             headers={"User-Agent": "Mozilla/5.0 (compatible; CrossBorderAgent/1.0)"}
         )
         if r.status_code == 200 and len(r.text) > 500:  # 成功加载到真实页面内容

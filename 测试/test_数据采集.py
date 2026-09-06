@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 """数据采集单测：内存缓存 TTL + 汇率四级降级链（全程 mock，零外呼）。"""
-import time
 from types import SimpleNamespace
 
 import pytest

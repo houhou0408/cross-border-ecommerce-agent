@@ -8,7 +8,7 @@
 4. 降级兜底：Rainforest API 不可用时，基于品类内置评分配置推断，保证工具可用性。
 """
 import time
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Tuple
 
 from langchain_core.tools import tool
 

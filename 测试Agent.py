@@ -32,7 +32,7 @@ print("测试 3: 简单查询 - 美国电子产品关税")
 print("=" * 60)
 try:
     result = agent.orchestrate("美国电子产品关税税率是多少", session_id="test_001")
-    print(f"✓ 查询完成")
+    print("✓ 查询完成")
     print(f"  答案: {result.get('answer', '')[:200]}...")
     print(f"  工具: {result.get('tools_used', [])}")
     print(f"  grounded: {result.get('grounded')} (score={result.get('score')})")

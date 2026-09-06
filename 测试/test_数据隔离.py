@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 import 工具集.视频生成 as 视频
 import 工具集.卖点图生成 as 卖点图
 from 接口.FastAPI服务 import app
-from 工具集.用户认证 import set_current_user
+from 基础设施.用户认证 import set_current_user
 
 
 @pytest.fixture(scope="module")

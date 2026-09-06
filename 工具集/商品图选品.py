@@ -10,14 +10,13 @@
 """
 import os
 import base64
-import time
 from pathlib import Path
 from typing import Dict, Any, Optional
 
 from langchain_core.tools import tool
 
-from config import LOG_DIR
-from 模块.日志统计 import get_file_logger
+from 基础设施.文件安全 import safe_resolve_upload_path
+from 基础设施.日志统计 import get_file_logger
 logger = get_file_logger("商品图选品")
 
 # DashScope API Key（复用视频/图片生成的 key）
@@ -38,19 +37,14 @@ def _encode_image_to_base64(image_path: str) -> str:
 
 
 def _resolve_image_path(image_path: str) -> Optional[Path]:
-    """解析图片路径（本地路径或 /uploads/* 路径）。"""
-    if image_path.startswith("/uploads/"):
-        p = UPLOAD_DIR / image_path.replace("/uploads/", "")
-        if p.exists():
-            return p
-    p = Path(image_path)
-    if p.exists():
+    """解析图片路径（安全约束：仅允许 /uploads/ 静态目录内的文件）。
+
+    客户端可提供任意 image_path，禁止直接按本地路径读取（防任意文件读取），
+    统一收口到 文件安全.safe_resolve_upload_path。
+    """
+    p = safe_resolve_upload_path(image_path)
+    if p is not None and p.is_file():
         return p
-    # 尝试在 uploads 目录下按文件名匹配
-    filename = Path(image_path).name
-    search = UPLOAD_DIR / filename
-    if search.exists():
-        return search
     return None
 
 
@@ -189,7 +183,7 @@ def 商品图选品分析(image_path: str, 选品要求: str = "", 目标市场:
             lines.append(f"- {analysis.get('提示')}")
         # 尝试从选品要求中推测品类
         if 选品要求:
-            lines.append(f"- 将基于选品要求尝试匹配品类")
+            lines.append("- 将基于选品要求尝试匹配品类")
         return "\n".join(lines)
 
     detected_category = analysis.get("品类", "")
@@ -229,7 +223,7 @@ def 商品图选品分析(image_path: str, 选品要求: str = "", 目标市场:
 
         # 步骤3: 痛点分析
         lines.append("")
-        lines.append(f"### 3. 竞品痛点分析")
+        lines.append("### 3. 竞品痛点分析")
 
         from 工具集.痛点拆解 import 痛点分析
 
@@ -246,7 +240,7 @@ def 商品图选品分析(image_path: str, 选品要求: str = "", 目标市场:
             lines.append("### 4. 视觉卖点与开发方向")
             lines.append(f"- 材质工艺: {analysis.get('材质', '未知')}")
             lines.append(f"- 设计风格: {analysis.get('风格', '未知')}")
-            lines.append(f"- 识别卖点:")
+            lines.append("- 识别卖点:")
             for sp in selling_points:
                 lines.append(f"  - {sp}")
             lines.append("")

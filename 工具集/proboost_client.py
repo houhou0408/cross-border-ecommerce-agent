@@ -12,9 +12,9 @@ import time
 import os
 import json
 import re
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 
-from 模块.日志统计 import get_file_logger
+from 基础设施.日志统计 import get_file_logger
 logger = get_file_logger("Proboost")
 
 # Proboost MCP 配置（优先环境变量）
@@ -30,9 +30,12 @@ _SITE_MAP = {
 
 
 def _parse_price(raw: Any) -> Optional[float]:
-    if raw is None: return None
-    try: return float(raw)
-    except (ValueError, TypeError): return None
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (ValueError, TypeError):
+        return None
 
 
 def _run_async(coro):
@@ -121,7 +124,7 @@ def _parse_proboost_response(text: str) -> tuple:
                 try:
                     # JSON 里的转义问题，尝试 JSON 规范的转义处理
                     data = json.loads(json_str.encode().decode('unicode_escape'))
-                except:
+                except Exception:  # noqa: BLE001
                     return None, 0
         
         records = data.get("records", []) if isinstance(data, dict) else []

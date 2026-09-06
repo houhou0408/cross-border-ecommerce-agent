@@ -8,6 +8,8 @@
 4. 图片上传：multipart 上传返回 /uploads/ 路径；
 5. 视频任务全生命周期（降级模式）：无 Key → 直接降级示例视频 + 任务记录可查。
 """
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -171,18 +173,26 @@ class Test视频任务生命周期:
         monkeypatch.setattr(视频, "_API_KEY", "")
 
         headers = _login(tmp_auth_files, "v_user1")
-        # 创建（无 Key → 直接降级示例视频）
+        # 提交（异步：立即返回 processing；无 Key → 后台线程很快降级示例视频）
         r = client.post("/video/text-to-video", json={"prompt": "产品展示视频"},
                         headers=headers)
         assert r.status_code == 200
         body = r.json()
-        assert body["used_fallback"] is True
-        assert body["video_url"]
+        assert body["task_id"]
+        assert body["status"] == "processing"
 
-        # 查询（本人可见）
-        detail = client.get(f"/video/tasks/{body['task_id']}", headers=headers)
-        assert detail.status_code == 200
-        assert detail.json()["status"] == "completed"
+        # 轮询任务直到完成（后台线程无网络调用，秒级收敛）
+        deadline = time.time() + 10
+        detail_body = {}
+        while time.time() < deadline:
+            detail = client.get(f"/video/tasks/{body['task_id']}", headers=headers)
+            detail_body = detail.json()
+            if detail_body.get("status") == "completed":
+                break
+            time.sleep(0.1)
+        assert detail_body.get("status") == "completed"
+        assert detail_body.get("used_fallback") is True
+        assert detail_body.get("video_url")
 
         # 列表（归属当前用户）
         tasks = client.get("/video/tasks", headers=headers).json()["tasks"]

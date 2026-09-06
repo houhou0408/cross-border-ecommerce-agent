@@ -82,6 +82,57 @@ export const api = {
     // 外部 signal 用于用户手动停止生成，不设超时
     return request('/ask', { method: 'POST', body, timeout: 0, signal })
   },
+  // 流式问答（SSE）：onStage(msg) 接收阶段事件（工具调用进度）；
+  // 返回最终 payload（与 /ask 相同结构）。服务端返回非 SSE（如会话校验失败）
+  // 时直接解析 JSON 返回，调用方无须区分。
+  askStream: async (query, sessionId, signal, imagePath = null, onStage = null) => {
+    const body = { query, session_id: sessionId || null }
+    if (imagePath) body.image_path = imagePath
+    const r = await fetch(BASE + '/ask/stream', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(body),
+      signal,
+    })
+    if (r.status === 401) {
+      tokenStore.clear()
+      window.dispatchEvent(new CustomEvent('auth:expired', { detail: { path: '/ask/stream' } }))
+      return { error: '登录已过期，请重新登录', auth_expired: true }
+    }
+    const ct = r.headers.get('content-type') || ''
+    if (!r.ok || !ct.includes('text/event-stream')) {
+      return await r.json()
+    }
+    const reader = r.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    let finalData = null
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      const parts = buf.split('\n\n')
+      buf = parts.pop() || ''
+      for (const part of parts) {
+        const line = part.split('\n').find((l) => l.startsWith('data: '))
+        if (!line) continue
+        let item
+        try {
+          item = JSON.parse(line.slice(6))
+        } catch {
+          continue
+        }
+        if (item.type === 'stage') {
+          if (onStage) onStage(item.msg)
+        } else if (item.type === 'result') {
+          finalData = item
+        } else if (item.type === 'error') {
+          finalData = { error: item.error || '服务异常' }
+        }
+      }
+    }
+    return finalData || { error: '连接中断' }
+  },
   // 对话页上传商品图片，返回 image_path
   uploadChatImage: (file) => {
     const fd = new FormData()
@@ -119,6 +170,7 @@ export const api = {
   // 文生视频（纯文字描述生成视频）
   generateTextVideo: (prompt) => postJSON('/video/text-to-video', { prompt }, 360000),
   listVideoTasks: () => getJSON('/video/tasks'),
+  getVideoTask: (taskId) => getJSON('/video/tasks/' + encodeURIComponent(taskId)),
   deleteVideoTask: (taskId) => deleteJSON('/video/tasks/' + encodeURIComponent(taskId)),
   // 卖点图生成（上传商品图+描述，生成4种电商营销图）
   generateSellingImages: (file, product, features) => {

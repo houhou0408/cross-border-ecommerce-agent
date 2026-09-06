@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 """智能客服单测：订单号提取 / FAQ 命中 / 引导 / LLM 异常降级（确定性路径不耗 token）。"""
-import pytest
 
 from 模块.智能客服 import (
     _extract_order_no, _has_faq_hit, _query_order, buyer_reply,

@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import 工具集.数据库连接 as db
+import 基础设施.数据库连接 as db
 
 
 # ============ 假 mysql.connector ============
@@ -71,6 +71,17 @@ def _install_fake_mysql(monkeypatch, connect_impl):
 # ============ 降级行为 ============
 
 class Test连接失败降级:
+    @pytest.fixture(autouse=True)
+    def _allow_log_propagation(self, monkeypatch):
+        """放开父 logger 日志传播，保证 caplog 能捕获记录。
+
+        生产日志体系（基础设施.日志统计）会给父 logger "跨境Agent" 挂自有
+        handler 并设 propagate=False，而 caplog 的捕获 handler 挂在根
+        logger——不放开传播记录到不了根，caplog 为空（pytest 8.x 表现，
+        9.x 行为不同），测试必须显式放开以跨版本稳定。
+        """
+        monkeypatch.setattr(logging.getLogger("跨境Agent"), "propagate", True)
+
     def test_连接失败yield_None不抛异常(self, monkeypatch):
         def _fail(kw):
             raise ConnectionRefusedError("MySQL 未启动")

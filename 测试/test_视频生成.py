@@ -7,7 +7,6 @@
 2. 任务制异步模型：创建→轮询→落盘 JSON 持久化；
 3. I2V 用 first_frame、R2V 用 reference_image 的自动适配（model 名驱动）。
 """
-import json
 from types import SimpleNamespace
 
 import pytest
@@ -150,13 +149,19 @@ class Test任务生命周期:
 class Test图片保存:
     def test_保存上传图片(self, tmp_path, monkeypatch):
         monkeypatch.setattr(视频, "UPLOAD_DIR", tmp_path)
-        url = 视频._save_upload_image(b"\xff\xd8fakejpg", "photo.jpg")
+        # JPEG 魔数开头（上传校验要求真实图片内容）
+        url = 视频._save_upload_image(b"\xff\xd8\xff" + b"fakejpg", "photo.jpg")
         assert url.startswith("/uploads/product_")
         assert url.endswith(".jpg")
         saved = tmp_path / url.replace("/uploads/", "")
-        assert saved.read_bytes() == b"\xff\xd8fakejpg"
+        assert saved.read_bytes() == b"\xff\xd8\xff" + b"fakejpg"
 
     def test_无扩展名默认jpg(self, tmp_path, monkeypatch):
         monkeypatch.setattr(视频, "UPLOAD_DIR", tmp_path)
-        url = 视频._save_upload_image(b"x", "noext")
+        url = 视频._save_upload_image(b"\xff\xd8\xff" + b"data", "noext")
         assert url.endswith(".jpg")
+
+    def test_非图片内容被拒绝(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(视频, "UPLOAD_DIR", tmp_path)
+        with pytest.raises(ValueError):
+            视频._save_upload_image(b"<html>not an image</html>", "evil.jpg")

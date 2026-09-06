@@ -13,7 +13,7 @@ from langchain_core.documents import Document
 from langchain_community.document_loaders import TextLoader, PyPDFLoader
 
 from config import KNOWLEDGE_DIR
-from 模块.日志统计 import get_file_logger
+from 基础设施.日志统计 import get_file_logger
 logger = get_file_logger("文档加载")
 
 

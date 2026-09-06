@@ -32,7 +32,8 @@ from 工具集.智能筛品 import 智能选品分析
 from 工具集.痛点拆解 import 痛点分析
 from 工具集.商品图选品 import 商品图选品分析
 from 模块.反馈闭环 import 记录反馈, 查看反馈统计
-from 模块.日志统计 import get_file_logger
+from 模块.意图路由 import try_route
+from 基础设施.日志统计 import get_file_logger
 logger = get_file_logger("Agent调度")
 
 
@@ -146,13 +147,16 @@ class 跨境Agent:
             system_prompt=SYSTEM_PROMPT,
         )
 
-    def orchestrate(self, query: str, chat_history: list = None, session_id: str = None) -> Dict[str, Any]:
+    def orchestrate(self, query: str, chat_history: list = None, session_id: str = None,
+                    on_event=None) -> Dict[str, Any]:
         """多任务编排主入口。
 
         Args:
             query: 用户自然语言任务
             chat_history: 对话历史（LangChain message 列表），用于多轮对话记忆
             session_id: 会话 ID（可选，用于关联记忆模块持久化）
+            on_event: 可选回调 on_event(msg:str)，流式接口用它推送工具调用阶段事件；
+                      传 None 时走普通 invoke（Agent 工具路径/非流式接口，行为不变）
 
         Returns:
             dict: answer(最终答案) / tools_used(工具链) / retrievals(召回数)
@@ -161,202 +165,18 @@ class 跨境Agent:
         session_id = session_id or str(uuid.uuid4())[:8]
         start = time.time()
 
-        # ---- 前置意图检测：图片上传 + 选品关键词 → 强制走商品图选品分析 ----
-        # DeepSeek 等模型对模糊意图有时不调用工具，这里做关键词兜底
-        _image_prefix = "【用户已上传商品图片："
-        if query.startswith(_image_prefix):
-            _has_intent = re.search(
-                r'分析|选品|能不能做|可以(做|卖)|有市场|竞争|帮我看看|可不可以|怎么样|值得|好不好做|能(做|卖)吗',
-                query
-            )
-            _img_match = re.match(
-                r'【用户已上传商品图片：([^\]]+)】\n用户问题：(.*)',
-                query, re.DOTALL
-            )
-            if _has_intent and _img_match:
-                _img_path = _img_match.group(1)
-                _user_q = _img_match.group(2).strip()
-                logger.info("[Agent] 检测到图片+选品意图，强制路由到商品图选品分析 "
-                            "(image=%s, q=%s)", _img_path, _user_q[:60])
-                try:
-                    _result = 商品图选品分析.invoke({
-                        "image_path": _img_path,
-                        "选品要求": _user_q,
-                    })
-                    _answer = str(_result) if _result else "选品分析无结果"
-                    # 在选品报告末尾追加素材生成选项
-                    _offer = (
-                        "\n\n---\n\n"
-                        "需要我继续生成以下素材吗？\n\n"
-                        "1. 生成产品Listing（基于选品分析的品类和竞品关键词，可直接生成）\n\n"
-                        f"2. 生成卖点图（基于您上传的商品图，可直接生成）\n\n"
-                        f"3. 生成宣传视频（基于您上传的商品图，可直接生成）\n\n"
-                        "请回复序号（如 1、2、3）或输入「全部生成」。"
-                    )
-                    _answer += _offer
-                    _tools_used = [{
-                        "tool": "product_image_selection",
-                        "input": f"query={_user_q[:50]}, image={_img_path}",
-                        "output": _answer[:200],
-                    }]
-                    latency_ms = int((time.time() - start) * 1000)
-                    verify = self.guard.verify(_answer, "", _answer)
-                    final_answer = self.guard.annotate_answer(_answer, verify)
-                    payload = {
-                        "session_id": session_id,
-                        "answer": final_answer,
-                        "raw_answer": _answer,
-                        "tools_used": _tools_used,
-                        "sources": [],
-                        "retrievals": 0,
-                        "grounded": verify.grounded,
-                        "score": verify.grounding_score,
-                        "reason": verify.reason,
-                        "suggestions": verify.suggestions,
-                        "latency_ms": latency_ms,
-                        "route": get_router().get_route_info(query),
-                    }
-                    try:
-                        from 模块.日志统计 import get_logger
-                        get_logger().log_query(payload)
-                    except Exception:
-                        pass
-                    if self.verbose:
-                        logger.info("\n[Agent] 耗时=%sms 工具链=%s 置信度=%s", latency_ms, _tools_used, verify.grounding_score)
-                    return payload
-                except Exception as _fe:
-                    logger.warning("[Agent] 商品图选品分析强制调用失败: %s，回退到正常 LLM 流程", _fe)
-
-        # ---- 前置意图检测2：选品后的素材生成序号输入 ----
-        # 用户在选品报告后输入 "1" / "2" / "3" / "全部生成" → 强制调用对应工具
-        _followup_match = re.match(r'^\s*(1|2|3|全部生成|全部)\s*$', query.strip())
-        if _followup_match:
-            _choice = _followup_match.group(1)
-            logger.info("[Agent] 检测到素材生成序号: %s", _choice)
-
-            # 从对话历史中提取上下文
-            _ctx_category = ""
-            _ctx_features = ""
-            _ctx_image_path = ""
-            if chat_history:
-                for _msg in reversed(chat_history):
-                    _text = str(_msg.content) if hasattr(_msg, 'content') else str(_msg)
-                    if not _ctx_category:
-                        _m = re.search(r'识别品类[：:]\s*(.+)', _text)
-                        if _m: _ctx_category = _m.group(1).strip()
-                    if not _ctx_features:
-                        _m = re.search(r'图片卖点[：:]\s*(.+)', _text)
-                        if _m: _ctx_features = _m.group(1).strip().replace(' | ', ',')
-                    if not _ctx_image_path:
-                        _m = re.search(r'(/uploads/\S+\.(?:png|jpg|jpeg))', _text)
-                        if _m: _ctx_image_path = _m.group(1)
-                    if _ctx_category and _ctx_features:
-                        break
-            # 从 query 自身也尝试提取（兜底）
-            if not _ctx_category:
-                _m = re.search(r'品类[：:]\s*(.+)', query)
-                if _m: _ctx_category = _m.group(1).strip()
-            if not _ctx_features:
-                _m = re.search(r'(?:卖点|features)[：:]\s*(.+)', query)
-                if _m: _ctx_features = _m.group(1).strip().replace(' | ', ',')[:200]
-
-            if not _ctx_category:
-                _ctx_category = "玻璃杯"  # fallback
-
-            logger.info("[Agent] 检测到素材生成序号: %s (品类=%s, image=%s)", _choice, _ctx_category, _ctx_image_path[:40] if _ctx_image_path else '无')
-
-            if _choice in ("1",):
-                _tool_result = 生成产品Listing.invoke({
-                    "product": _ctx_category,
-                    "platform": "amazon",
-                    "language": "en",
-                    "features": _ctx_features,
-                })
-                _tools_used = [{"tool": "generate_listing", "input": f"product={_ctx_category}", "output": str(_tool_result)[:200]}]
-                _answer = str(_tool_result)
-            elif _choice in ("2",):
-                _tool_result = 生成卖点图.invoke({
-                    "product": _ctx_category,
-                    "features": _ctx_features,
-                    "image_path": _ctx_image_path,
-                    "品类": _ctx_category,
-                    "画质": "精品",
-                })
-                _tools_used = [{"tool": "generate_selling_images", "input": f"product={_ctx_category}", "output": str(_tool_result)[:200]}]
-                _answer = str(_tool_result)
-            elif _choice in ("3",):
-                _video_prompt = f"{_ctx_category}产品宣传，{_ctx_features}，自然光线下展示产品质感"
-                if _ctx_image_path:
-                    _tool_result = 生成宣传视频.invoke({
-                        "prompt": _video_prompt,
-                        "image_path": _ctx_image_path,
-                    })
-                else:
-                    _tool_result = 文生视频.invoke({"prompt": _video_prompt})
-                _tools_used = [{"tool": "generate_promo_video", "input": f"prompt={_video_prompt[:50]}", "output": str(_tool_result)[:200]}]
-                _answer = str(_tool_result)
-            elif _choice in ("全部生成", "全部"):
-                # 全部生成：依次调用
-                _answers = []
-                _all_tools = []
-                # 1. Listing
-                _r1 = 生成产品Listing.invoke({"product": _ctx_category, "platform": "amazon", "language": "en", "features": _ctx_features})
-                _answers.append("### 1. 产品Listing\n\n" + str(_r1))
-                _all_tools.append({"tool": "generate_listing", "input": f"product={_ctx_category}", "output": str(_r1)[:80]})
-                # 2. 卖点图
-                _r2 = 生成卖点图.invoke({"product": _ctx_category, "features": _ctx_features, "image_path": _ctx_image_path, "品类": _ctx_category, "画质": "精品"})
-                _answers.append("### 2. 卖点图\n\n" + str(_r2))
-                _all_tools.append({"tool": "generate_selling_images", "input": f"product={_ctx_category}", "output": str(_r2)[:80]})
-                # 3. 视频
-                _video_prompt = f"{_ctx_category}产品宣传，{_ctx_features}，自然光线下展示产品质感"
-                if _ctx_image_path:
-                    _r3 = 生成宣传视频.invoke({"prompt": _video_prompt, "image_path": _ctx_image_path})
-                else:
-                    _r3 = 文生视频.invoke({"prompt": _video_prompt})
-                _answers.append("### 3. 宣传视频\n\n" + str(_r3))
-                _all_tools.append({"tool": "generate_promo_video", "input": f"prompt={_video_prompt[:50]}", "output": str(_r3)[:80]})
-                _answer = "\n\n---\n\n".join(_answers)
-                _tools_used = _all_tools
-            else:
-                _answer = ""
-                _tools_used = []
-
-            if _answer:
-                latency_ms = int((time.time() - start) * 1000)
-                verify = self.guard.verify(_answer, "", _answer)
-                final_answer = self.guard.annotate_answer(_answer, verify)
-                # 追加后续选项（如果还有未生成的）
-                _remaining = []
-                if _choice == "1":
-                    _remaining = ["2. 生成卖点图", "3. 生成宣传视频"]
-                elif _choice == "2":
-                    _remaining = ["1. 生成产品Listing", "3. 生成宣传视频"]
-                elif _choice == "3":
-                    _remaining = ["1. 生成产品Listing", "2. 生成卖点图"]
-                if _remaining:
-                    final_answer += "\n\n---\n\n还可以继续生成：\n" + "\n".join(_remaining)
-                payload = {
-                    "session_id": session_id,
-                    "answer": final_answer,
-                    "raw_answer": _answer,
-                    "tools_used": _tools_used,
-                    "sources": [],
-                    "retrievals": 0,
-                    "grounded": verify.grounded,
-                    "score": verify.grounding_score,
-                    "reason": verify.reason,
-                    "suggestions": verify.suggestions,
-                    "latency_ms": latency_ms,
-                    "route": get_router().get_route_info(query),
-                }
-                try:
-                    from 模块.日志统计 import get_logger
-                    get_logger().log_query(payload)
-                except Exception:
-                    pass
-                if self.verbose:
-                    logger.info("\n[Agent] 耗时=%sms 工具链=%s 置信度=%s", latency_ms, _tools_used, verify.grounding_score)
-                return payload
+        # ---- 确定性意图前置路由（图片+选品 / 素材生成序号）：命中则绕过 LLM 直调工具 ----
+        # 规则细节见 模块/意图路由.py；未命中返回 None，继续走正常 ReAct 流程
+        routed = try_route(
+            query,
+            chat_history,
+            guard=self.guard,
+            session_id=session_id,
+            start=start,
+            verbose=self.verbose,
+        )
+        if routed is not None:
+            return routed
 
         # 每次请求重建 executor，避免 httpx client 复用关闭问题
         executor = self._build_executor()
@@ -365,7 +185,7 @@ class 跨境Agent:
             # langgraph 风格输入：历史消息 + 当前 query（注入记忆实现多轮对话）
             messages = list(chat_history or [])
             messages.append(HumanMessage(content=query))
-            result = executor.invoke({"messages": messages})
+            result = self._invoke_executor(executor, messages, on_event)
             result_msgs = result["messages"]
             # 取最后一条 AI 消息作为最终答案
             answer = result_msgs[-1].content or ""
@@ -374,13 +194,13 @@ class 跨境Agent:
             kb_context = self._collect_full_context(result_msgs)
             tool_context = self._collect_tool_context(result_msgs)
             sources = self._extract_sources(result_msgs)
-        except Exception as e:
+        except Exception:
             # 重试一次（常见问题：httpx client closed / langgraph bindings stale）
             try:
                 executor2 = self._build_executor()
                 messages2 = list(chat_history or [])
                 messages2.append(HumanMessage(content=query))
-                result2 = executor2.invoke({"messages": messages2})
+                result2 = self._invoke_executor(executor2, messages2, on_event)
                 answer = result2["messages"][-1].content or ""
                 tools_used = self._extract_tool_chain(result2["messages"])
                 kb_context = self._collect_full_context(result2["messages"])
@@ -416,7 +236,7 @@ class 跨境Agent:
 
         # ---- 写入日志统计 ----
         try:
-            from 模块.日志统计 import get_logger
+            from 基础设施.日志统计 import get_logger
             get_logger().log_query(payload)
         except Exception:  # noqa: BLE001
             pass
@@ -425,6 +245,54 @@ class 跨境Agent:
             logger.info("\n[Agent] 耗时=%sms 工具链=%s 置信度=%s", latency_ms, tools_used, verify.grounding_score)
 
         return payload
+
+    def _invoke_executor(self, executor, messages, on_event=None):
+        """调用 langgraph 执行器；流式模式下按节点更新产出阶段事件。
+
+        - on_event 为 None → 普通 invoke（Agent 工具路径 / 非流式接口，行为不变）；
+        - on_event 提供时 → 用 executor.stream(stream_mode="updates") 逐节点回调
+          工具调用进度（"调用工具 xxx …" / "工具 xxx 已返回"）；
+          stream 不可用（版本差异）时自动回退普通 invoke，保证功能不回退。
+        """
+        if on_event is None:
+            return executor.invoke({"messages": messages})
+
+        final_msgs = None
+        id_to_name = {}
+        try:
+            for update in executor.stream({"messages": messages}, stream_mode="updates"):
+                if not isinstance(update, dict):
+                    continue
+                for _node, payload in update.items():
+                    msgs = payload.get("messages", []) if isinstance(payload, dict) else []
+                    for m in msgs:
+                        if isinstance(m, AIMessage):
+                            for tc in (getattr(m, "tool_calls", None) or []):
+                                name = tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
+                                tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
+                                if name:
+                                    id_to_name[tc_id] = name
+                                    self._emit_event(on_event, f"调用工具 {name} …")
+                        elif isinstance(m, ToolMessage):
+                            name = id_to_name.get(getattr(m, "tool_call_id", ""), "")
+                            if name:
+                                self._emit_event(on_event, f"工具 {name} 已返回")
+                    if msgs:
+                        final_msgs = msgs
+        except Exception:
+            # 流式接口不可用（langgraph 版本差异等）→ 回退普通 invoke
+            return executor.invoke({"messages": messages})
+        if final_msgs is None:
+            return executor.invoke({"messages": messages})
+        return {"messages": final_msgs}
+
+    @staticmethod
+    def _emit_event(on_event, msg: str):
+        """事件回调兜底：回调异常绝不影响主流程。"""
+        try:
+            on_event(msg)
+        except Exception:  # noqa: BLE001
+            pass
 
     @staticmethod
     def _extract_tool_chain(messages) -> List[Dict[str, str]]:

@@ -5,7 +5,7 @@
 1. 测试全程不依赖 MySQL / LLM Key / 外部网络 / embedding 模型；
 2. 不用 sqlite 替身——项目 SQL 是 MySQL 方言（%s 占位符、ON DUPLICATE KEY UPDATE、
    REPLACE INTO、JSON 列），换 sqlite 等于重写所有 SQL，违背"不改行为"原则；
-3. 各业务模块都是 `from 工具集.数据库连接 import get_cursor` 的本地绑定，
+3. 各业务模块都是 `from 基础设施.数据库连接 import get_cursor` 的本地绑定，
    patch 源模块对已导入的模块无效，必须逐消费模块 patch；
 4. FakeCursor 按 SQL 关键字预设返回行，并记录 execute 调用供断言。
 """
@@ -67,13 +67,13 @@ def _offline_cursor_ctx():
 
 _DB_CONSUMERS = [
     "模块.记忆模块",
-    "模块.日志统计",
+    "基础设施.日志统计",
     "模块.反馈闭环",
     "工具集.数据采集",
     "工具集.关税查询",
     "工具集.视频生成",
     "工具集.卖点图生成",
-    "工具集.用户认证",
+    "基础设施.用户认证",
 ]
 
 
@@ -141,7 +141,7 @@ def _no_network(requests_like):
 @pytest.fixture
 def tmp_auth_files(monkeypatch, tmp_path):
     """用户/Token 文件隔离到 tmp 目录。"""
-    import 工具集.用户认证 as auth
+    import 基础设施.用户认证 as auth
     monkeypatch.setattr(auth, "_USERS_FILE", tmp_path / "users.json")
     monkeypatch.setattr(auth, "_TOKENS_FILE", tmp_path / "tokens.json")
     return auth
